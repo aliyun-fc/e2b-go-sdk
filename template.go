@@ -616,7 +616,7 @@ func ensureTemplateCopyWithinContext(path, contextPath string) error {
 
 // GetBuildStatus returns template build status.
 func (c *Client) GetBuildStatus(ctx context.Context, templateID, buildID string, logsOffset int) (TemplateBuildStatusResponse, error) {
-	query := url.Values{"logsOffset": []string{strconvItoa(logsOffset)}}
+	query := url.Values{"logsOffset": []string{strconv.Itoa(logsOffset)}}
 	var response TemplateBuildStatusResponse
 	path := "/templates/" + url.PathEscape(templateID) + "/builds/" + url.PathEscape(buildID) + "/status"
 	if err := c.doJSON(ctx, http.MethodGet, path, query, nil, &response); err != nil {
@@ -642,7 +642,7 @@ func (c *Client) ListTemplates(ctx context.Context, teamID string) ([]TemplateIn
 func (c *Client) GetTemplate(ctx context.Context, templateID string, limit int, nextToken string) (TemplateWithBuilds, error) {
 	query := url.Values{}
 	if limit > 0 {
-		query.Set("limit", strconvItoa(limit))
+		query.Set("limit", strconv.Itoa(limit))
 	}
 	if nextToken != "" {
 		query.Set("nextToken", nextToken)
@@ -710,26 +710,4 @@ func (c *Client) GetTemplateTags(ctx context.Context, templateID string) ([]Temp
 		return nil, &TemplateError{Message: err.Error()}
 	}
 	return response, nil
-}
-
-func strconvItoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }

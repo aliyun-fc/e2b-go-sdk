@@ -34,3 +34,17 @@ func TestCloneDestinationFromURL(t *testing.T) {
 		}
 	}
 }
+
+func TestParseGitBranchesClassifiesRemoteRefs(t *testing.T) {
+	raw := "refs/heads/main\nrefs/heads/feature/x\nrefs/remotes/origin/main\nrefs/remotes/upstream/dev\n"
+	branches := parseGitBranches("main\n", raw)
+	if branches.Current != "main" {
+		t.Fatalf("current = %q", branches.Current)
+	}
+	if len(branches.Local) != 2 || branches.Local[0] != "main" || branches.Local[1] != "feature/x" {
+		t.Fatalf("local = %#v", branches.Local)
+	}
+	if len(branches.Remote) != 2 || branches.Remote[0] != "origin/main" || branches.Remote[1] != "upstream/dev" {
+		t.Fatalf("remote = %#v", branches.Remote)
+	}
+}

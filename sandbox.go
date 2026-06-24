@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -219,22 +220,44 @@ func (c *Client) CreateSandbox(ctx context.Context, opts ...SandboxCreateOption)
 		return nil, err
 	}
 	if compareVersion(response.EnvdVersion, "0.1.0") < 0 {
-		_, _ = c.KillSandbox(ctx, response.SandboxID)
+		c.cleanupCreatedSandbox(response.SandboxID)
 		return nil, &TemplateError{Message: "you need to update the template to use the new SDK"}
 	}
 	sandbox := c.newSandbox(response)
 	if options.mcp != nil {
 		token := newRandomToken()
 		sandbox.mcpToken = token
-		result, err := sandbox.Commands.Run(ctx, fmt.Sprintf("mcp-gateway --config %s", shellQuoteJSON(options.mcp)), WithCommandUser("root"), WithCommandEnv("GATEWAY_ACCESS_TOKEN", token))
+		_, err := sandbox.Commands.Run(ctx, fmt.Sprintf("mcp-gateway --config %s", shellQuoteJSON(options.mcp)), WithCommandUser("root"), WithCommandEnv("GATEWAY_ACCESS_TOKEN", token))
 		if err != nil {
-			return nil, err
-		}
-		if result.ExitCode != 0 {
-			return nil, &SandboxError{Message: "failed to start MCP gateway: " + result.Stderr}
+			c.cleanupCreatedSandbox(response.SandboxID)
+			return nil, formatMCPGatewayStartError(err)
 		}
 	}
 	return sandbox, nil
+}
+
+func (c *Client) cleanupCreatedSandbox(sandboxID string) {
+	cleanupCtx, cancel := withTimeout(context.Background(), c.config.requestContextTimeout(0))
+	defer cancel()
+	_, _ = c.KillSandbox(cleanupCtx, sandboxID)
+}
+
+func formatMCPGatewayStartError(err error) error {
+	var exitErr *CommandExitError
+	if errors.As(err, &exitErr) {
+		details := strings.TrimSpace(exitErr.Result.Stderr)
+		if details == "" {
+			details = strings.TrimSpace(exitErr.Result.Error)
+		}
+		if details == "" {
+			details = strings.TrimSpace(exitErr.Result.Stdout)
+		}
+		if details == "" {
+			details = err.Error()
+		}
+		return &SandboxError{Message: "failed to start MCP gateway: " + details}
+	}
+	return &SandboxError{Message: "failed to start MCP gateway: " + err.Error()}
 }
 
 // ConnectSandbox connects to a running or paused sandbox by ID.

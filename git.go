@@ -110,23 +110,32 @@ func (g *Git) Branches(ctx context.Context, path string, opts ...GitOption) (Git
 	if err != nil {
 		return GitBranches{}, err
 	}
-	branchesResult, err := g.runGitResult(ctx, []string{"git", "-C", path, "branch", "--all", "--format=%(refname:short)"}, options)
+	branchesResult, err := g.runGitResult(ctx, []string{"git", "-C", path, "branch", "--all", "--format=%(refname)"}, options)
 	if err != nil {
 		return GitBranches{}, err
 	}
-	branches := GitBranches{Current: strings.TrimSpace(currentResult.Stdout), Raw: branchesResult.Stdout}
-	for _, line := range strings.Split(branchesResult.Stdout, "\n") {
+	return parseGitBranches(currentResult.Stdout, branchesResult.Stdout), nil
+}
+
+func parseGitBranches(current, raw string) GitBranches {
+	branches := GitBranches{Current: strings.TrimSpace(current), Raw: raw}
+	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(strings.TrimPrefix(line, "*"))
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "remotes/") {
+		switch {
+		case strings.HasPrefix(line, "refs/remotes/"):
+			branches.Remote = append(branches.Remote, strings.TrimPrefix(line, "refs/remotes/"))
+		case strings.HasPrefix(line, "refs/heads/"):
+			branches.Local = append(branches.Local, strings.TrimPrefix(line, "refs/heads/"))
+		case strings.HasPrefix(line, "remotes/"):
 			branches.Remote = append(branches.Remote, strings.TrimPrefix(line, "remotes/"))
-		} else {
+		default:
 			branches.Local = append(branches.Local, line)
 		}
 	}
-	return branches, nil
+	return branches
 }
 
 func (g *Git) CreateBranch(ctx context.Context, path, branch string, opts ...GitOption) error {

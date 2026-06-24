@@ -120,7 +120,7 @@ func (c *Commands) Start(ctx context.Context, cmd string, opts ...CommandOption)
 		req["process"].(map[string]any)["cwd"] = options.cwd
 	}
 	extra := map[string]string{keepalivePingHeader: strconv.Itoa(keepalivePingIntervalSec)}
-	stream, err := c.sandbox.connectServerStream(ctx, "process.Process", "Start", req, options.user, options.timeout, extra)
+	stream, err := c.sandbox.connectServerStream(ctx, "process.Process", "Start", req, options.user, options.timeout, options.requestTimeout, extra)
 	if err != nil {
 		return nil, err
 	}
@@ -133,10 +133,10 @@ func (c *Commands) Start(ctx context.Context, cmd string, opts ...CommandOption)
 }
 
 // Connect attaches to an existing command by PID.
-func (c *Commands) Connect(ctx context.Context, pid int, timeout time.Duration) (*CommandHandle, error) {
+func (c *Commands) Connect(ctx context.Context, pid int, timeout time.Duration, requestTimeout ...time.Duration) (*CommandHandle, error) {
 	req := map[string]any{"process": map[string]int{"pid": pid}}
 	extra := map[string]string{keepalivePingHeader: strconv.Itoa(keepalivePingIntervalSec)}
-	stream, err := c.sandbox.connectServerStream(ctx, "process.Process", "Connect", req, nil, timeout, extra)
+	stream, err := c.sandbox.connectServerStream(ctx, "process.Process", "Connect", req, nil, timeout, firstDuration(requestTimeout), extra)
 	if err != nil {
 		return nil, err
 	}

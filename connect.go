@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+const maxConnectEnvelopeSize = 64 << 20
+
 type connectErrorBody struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -84,7 +86,7 @@ func (s *Sandbox) connectUnary(ctx context.Context, service, method string, requ
 	return nil
 }
 
-func (s *Sandbox) connectServerStream(ctx context.Context, service, method string, request any, user *string, timeout time.Duration, extraHeaders map[string]string) (*connectStream, error) {
+func (s *Sandbox) connectServerStream(ctx context.Context, service, method string, request any, user *string, timeout time.Duration, requestTimeout time.Duration, extraHeaders map[string]string) (*connectStream, error) {
 	payload, err := encodeConnectJSONEnvelope(request)
 	if err != nil {
 		return nil, err
@@ -100,14 +102,14 @@ func (s *Sandbox) connectServerStream(ctx context.Context, service, method strin
 		headers["Connect-Timeout-Ms"] = strconv.FormatInt(timeout.Milliseconds(), 10)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	streamCtx, cancel := context.WithCancel(ctx)
 
 	target, err := url.JoinPath(s.envdAPIURL, service, method)
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(streamCtx, http.MethodPost, target, bytes.NewReader(payload))
 	if err != nil {
 		cancel()
 		return nil, err
@@ -115,12 +117,8 @@ func (s *Sandbox) connectServerStream(ctx context.Context, service, method strin
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	res, err := s.client.http.Do(req)
+	res, err := s.doStreamRequest(ctx, req, cancel, requestTimeout)
 	if err != nil {
-		cancel()
-		if ctx.Err() != nil {
-			return nil, formatRequestTimeout()
-		}
 		return nil, err
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -140,6 +138,66 @@ func (s *Sandbox) connectServerStream(ctx context.Context, service, method strin
 		stream.decoder = json.NewDecoder(stream.reader)
 	}
 	return stream, nil
+}
+
+type streamRequestResult struct {
+	res *http.Response
+	err error
+}
+
+func (s *Sandbox) doStreamRequest(ctx context.Context, req *http.Request, cancel context.CancelFunc, requestTimeout time.Duration) (*http.Response, error) {
+	timeout := s.client.config.requestContextTimeout(requestTimeout)
+	if timeout == 0 {
+		res, err := s.client.http.Do(req)
+		if err != nil {
+			ctxErr := ctx.Err()
+			cancel()
+			if ctxErr != nil {
+				return nil, formatRequestTimeout()
+			}
+			return nil, err
+		}
+		return res, nil
+	}
+
+	resultCh := make(chan streamRequestResult, 1)
+	go func() {
+		res, err := s.client.http.Do(req)
+		result := streamRequestResult{res: res, err: err}
+		if err == nil && res != nil {
+			select {
+			case resultCh <- result:
+			case <-req.Context().Done():
+				_ = res.Body.Close()
+			}
+			return
+		}
+		select {
+		case resultCh <- result:
+		case <-req.Context().Done():
+		}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			ctxErr := ctx.Err()
+			cancel()
+			if ctxErr != nil {
+				return nil, formatRequestTimeout()
+			}
+			return nil, result.err
+		}
+		return result.res, nil
+	case <-timer.C:
+		cancel()
+		return nil, formatRequestTimeout()
+	case <-ctx.Done():
+		cancel()
+		return nil, formatRequestTimeout()
+	}
 }
 
 func encodeConnectJSONEnvelope(request any) ([]byte, error) {
@@ -187,6 +245,9 @@ func (s *connectStream) nextEnvelope(out any) error {
 	}
 	flags := header[0]
 	length := binary.BigEndian.Uint32(header[1:5])
+	if length > maxConnectEnvelopeSize {
+		return &SandboxError{Message: fmt.Sprintf("connect envelope size %d exceeds maximum %d", length, maxConnectEnvelopeSize)}
+	}
 	payload := make([]byte, length)
 	if _, err := io.ReadFull(s.reader, payload); err != nil {
 		return err

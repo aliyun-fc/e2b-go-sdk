@@ -1,6 +1,7 @@
 package e2b
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -99,4 +100,45 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+func TestCreateSandboxCleansUpWhenMCPGatewayFails(t *testing.T) {
+	var deleted bool
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/sandboxes":
+			return jsonResponse(http.StatusCreated, `{"clientID":"client","envdVersion":"0.6.4","sandboxID":"sbx_mcp","templateID":"mcp-gateway","domain":"example.com","envdAccessToken":"envd-token","trafficAccessToken":"traffic-token"}`, nil), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/process.Process/Start":
+			body := bytes.Join([][]byte{
+				testConnectEnvelope(t, "{\"event\":{\"start\":{\"pid\":42}}}"),
+				testConnectEnvelope(t, "{\"event\":{\"end\":{\"exitCode\":1,\"error\":\"gateway failed\"}}}"),
+			}, nil)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/connect+json"}},
+				Body:       io.NopCloser(bytes.NewReader(body)),
+			}, nil
+		case r.Method == http.MethodDelete && r.URL.Path == "/sandboxes/sbx_mcp":
+			deleted = true
+			return jsonResponse(http.StatusNoContent, "", nil), nil
+		default:
+			t.Fatalf("unexpected request: %s %s host=%s", r.Method, r.URL.RequestURI(), r.URL.Host)
+			return nil, nil
+		}
+	})
+	client, err := NewClient(
+		WithAPIKey("e2b_0123"),
+		WithAPIURL("https://api.test"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	_, err = client.CreateSandbox(context.Background(), WithMCP(map[string]any{"server": "stdio"}))
+	if err == nil || !strings.Contains(err.Error(), "failed to start MCP gateway: gateway failed") {
+		t.Fatalf("CreateSandbox error = %v", err)
+	}
+	if !deleted {
+		t.Fatal("expected created sandbox to be deleted")
+	}
 }

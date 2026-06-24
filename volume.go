@@ -316,8 +316,9 @@ func (v *Volume) volumeRequest(ctx context.Context, method, path string, query u
 	}
 	res, err := v.client.http.Do(req)
 	if err != nil {
+		ctxErr := ctx.Err()
 		cancel()
-		if ctx.Err() != nil {
+		if ctxErr != nil {
 			return nil, formatRequestTimeout()
 		}
 		return nil, err

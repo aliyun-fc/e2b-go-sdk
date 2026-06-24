@@ -512,7 +512,13 @@ func metadataHeaders(metadata map[string]string) map[string]string {
 }
 
 func escapeQuotes(s string) string {
-	return strings.ReplaceAll(s, `"`, `\"`)
+	replacer := strings.NewReplacer(
+		"\\", "\\\\",
+		`"`, `\"`,
+		"\r", "",
+		"\n", "",
+	)
+	return replacer.Replace(s)
 }
 
 type fileOptions struct {

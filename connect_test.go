@@ -7,8 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -44,7 +46,8 @@ func TestConnectServerStreamUsesEnvelopeAndTimeoutHeader(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 	sandbox := &Sandbox{client: client, sandboxID: "sbx", envdAPIURL: "https://envd.test", envdVersion: "0.5.2"}
-	stream, err := sandbox.connectServerStream(context.Background(), "process.Process", "Start", map[string]any{"hello": "world"}, nil, 2*time.Second, nil)
+	sandbox.Commands = newCommands(sandbox)
+	stream, err := sandbox.connectServerStream(context.Background(), "process.Process", "Start", map[string]any{"hello": "world"}, nil, 2*time.Second, 0, nil)
 	if err != nil {
 		t.Fatalf("connectServerStream: %v", err)
 	}
@@ -113,4 +116,74 @@ func testConnectEnvelope(t *testing.T, payload string) []byte {
 	binary.BigEndian.PutUint32(out[1:5], uint32(len(payload)))
 	copy(out[5:], payload)
 	return out
+}
+
+func TestConnectServerStreamReturnsTransportError(t *testing.T) {
+	want := errors.New("dial refused")
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return nil, want
+	})
+	client, err := NewClient(
+		WithAPIKey("e2b_0123"),
+		WithAPIURL("https://api.test"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	sandbox := &Sandbox{client: client, sandboxID: "sbx", envdAPIURL: "https://envd.test", envdVersion: "0.5.2"}
+	sandbox.Commands = newCommands(sandbox)
+	_, err = sandbox.connectServerStream(context.Background(), "process.Process", "Start", map[string]any{}, nil, 0, 0, nil)
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+	var timeoutErr *TimeoutError
+	if errors.As(err, &timeoutErr) {
+		t.Fatalf("transport error was reported as timeout: %v", err)
+	}
+}
+
+func TestConnectStreamRejectsOversizedEnvelope(t *testing.T) {
+	header := make([]byte, 5)
+	binary.BigEndian.PutUint32(header[1:5], maxConnectEnvelopeSize+1)
+	body := io.NopCloser(bytes.NewReader(header))
+	stream := &connectStream{body: body, reader: bufio.NewReader(body), envelope: true}
+	err := stream.Next(&map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "exceeds maximum") {
+		t.Fatalf("Next error = %v", err)
+	}
+}
+
+func TestCommandRequestTimeoutControlsStreamSetup(t *testing.T) {
+	var timeoutHeader string
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		timeoutHeader = r.Header.Get("Connect-Timeout-Ms")
+		<-r.Context().Done()
+		return nil, r.Context().Err()
+	})
+	client, err := NewClient(
+		WithAPIKey("e2b_0123"),
+		WithAPIURL("https://api.test"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	sandbox := &Sandbox{client: client, sandboxID: "sbx", envdAPIURL: "https://envd.test", envdVersion: "0.5.2"}
+	sandbox.Commands = newCommands(sandbox)
+	start := time.Now()
+	_, err = sandbox.Commands.Start(context.Background(), "sleep 1", WithCommandTimeout(2*time.Second), WithCommandRequestTimeout(10*time.Millisecond))
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	var timeoutErr *TimeoutError
+	if !errors.As(err, &timeoutErr) {
+		t.Fatalf("error = %T %v, want TimeoutError", err, err)
+	}
+	if timeoutHeader != "2000" {
+		t.Fatalf("Connect-Timeout-Ms = %q", timeoutHeader)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("request timeout took too long: %s", elapsed)
+	}
 }

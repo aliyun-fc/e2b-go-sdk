@@ -75,7 +75,7 @@ func (p *Pty) Create(ctx context.Context, size PtySize, opts ...PtyOption) (*Com
 		req["process"].(map[string]any)["cwd"] = options.cwd
 	}
 	extra := map[string]string{keepalivePingHeader: strconv.Itoa(keepalivePingIntervalSec)}
-	stream, err := p.sandbox.connectServerStream(ctx, "process.Process", "Start", req, options.user, options.timeout, extra)
+	stream, err := p.sandbox.connectServerStream(ctx, "process.Process", "Start", req, options.user, options.timeout, options.requestTimeout, extra)
 	if err != nil {
 		return nil, err
 	}
@@ -88,10 +88,10 @@ func (p *Pty) Create(ctx context.Context, size PtySize, opts ...PtyOption) (*Com
 }
 
 // Connect attaches to an existing PTY.
-func (p *Pty) Connect(ctx context.Context, pid int, timeout time.Duration) (*CommandHandle, error) {
+func (p *Pty) Connect(ctx context.Context, pid int, timeout time.Duration, requestTimeout ...time.Duration) (*CommandHandle, error) {
 	req := map[string]any{"process": map[string]int{"pid": pid}}
 	extra := map[string]string{keepalivePingHeader: strconv.Itoa(keepalivePingIntervalSec)}
-	stream, err := p.sandbox.connectServerStream(ctx, "process.Process", "Connect", req, nil, timeout, extra)
+	stream, err := p.sandbox.connectServerStream(ctx, "process.Process", "Connect", req, nil, timeout, firstDuration(requestTimeout), extra)
 	if err != nil {
 		return nil, err
 	}
@@ -116,10 +116,11 @@ func (p *Pty) Resize(ctx context.Context, pid int, size PtySize, requestTimeout 
 }
 
 type ptyOptions struct {
-	envs    map[string]string
-	user    *string
-	cwd     string
-	timeout time.Duration
+	envs           map[string]string
+	user           *string
+	cwd            string
+	timeout        time.Duration
+	requestTimeout time.Duration
 }
 
 // PtyOption configures PTY creation.
@@ -148,6 +149,10 @@ func WithPtyCwd(cwd string) PtyOption {
 
 func WithPtyTimeout(timeout time.Duration) PtyOption {
 	return func(o *ptyOptions) { o.timeout = timeout }
+}
+
+func WithPtyRequestTimeout(timeout time.Duration) PtyOption {
+	return func(o *ptyOptions) { o.requestTimeout = timeout }
 }
 
 func ptyOptionsFrom(opts ...PtyOption) ptyOptions {
