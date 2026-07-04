@@ -160,7 +160,7 @@ func (s *Sandbox) doStreamRequest(ctx context.Context, req *http.Request, cancel
 		return res, nil
 	}
 
-	resultCh := make(chan streamRequestResult, 1)
+	resultCh := make(chan streamRequestResult)
 	go func() {
 		res, err := s.client.http.Do(req)
 		result := streamRequestResult{res: res, err: err}

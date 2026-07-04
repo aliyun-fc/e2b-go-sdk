@@ -227,11 +227,12 @@ func (c *Client) CreateSandbox(ctx context.Context, opts ...SandboxCreateOption)
 	if options.mcp != nil {
 		token := newRandomToken()
 		sandbox.mcpToken = token
-		_, err := sandbox.Commands.Run(ctx, fmt.Sprintf("mcp-gateway --config %s", shellQuoteJSON(options.mcp)), WithCommandUser("root"), WithCommandEnv("GATEWAY_ACCESS_TOKEN", token))
+		handle, err := sandbox.Commands.Start(ctx, fmt.Sprintf("mcp-gateway --config %s", shellQuoteJSON(options.mcp)), WithCommandUser("root"), WithCommandEnv("GATEWAY_ACCESS_TOKEN", token), WithCommandTimeout(0))
 		if err != nil {
 			c.cleanupCreatedSandbox(response.SandboxID)
 			return nil, formatMCPGatewayStartError(err)
 		}
+		_ = handle.Disconnect()
 	}
 	return sandbox, nil
 }

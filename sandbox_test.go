@@ -102,13 +102,38 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
 
-func TestCreateSandboxCleansUpWhenMCPGatewayFails(t *testing.T) {
+func TestCreateSandboxStartsMCPGatewayInBackground(t *testing.T) {
 	var deleted bool
+	var timeoutHeader string
+	var gatewayCommand string
+	var gatewayToken string
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/sandboxes":
 			return jsonResponse(http.StatusCreated, `{"clientID":"client","envdVersion":"0.6.4","sandboxID":"sbx_mcp","templateID":"mcp-gateway","domain":"example.com","envdAccessToken":"envd-token","trafficAccessToken":"traffic-token"}`, nil), nil
 		case r.Method == http.MethodPost && r.URL.Path == "/process.Process/Start":
+			timeoutHeader = r.Header.Get("Connect-Timeout-Ms")
+			raw, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read command request: %v", err)
+			}
+			if len(raw) < 5 {
+				t.Fatalf("command request too short: %d", len(raw))
+			}
+			var request struct {
+				Process struct {
+					Args []string          `json:"args"`
+					Envs map[string]string `json:"envs"`
+				} `json:"process"`
+			}
+			if err := json.Unmarshal(raw[5:], &request); err != nil {
+				t.Fatalf("decode command request: %v", err)
+			}
+			if len(request.Process.Args) != 3 {
+				t.Fatalf("process args = %#v", request.Process.Args)
+			}
+			gatewayCommand = request.Process.Args[2]
+			gatewayToken = request.Process.Envs["GATEWAY_ACCESS_TOKEN"]
 			body := bytes.Join([][]byte{
 				testConnectEnvelope(t, "{\"event\":{\"start\":{\"pid\":42}}}"),
 				testConnectEnvelope(t, "{\"event\":{\"end\":{\"exitCode\":1,\"error\":\"gateway failed\"}}}"),
@@ -134,11 +159,20 @@ func TestCreateSandboxCleansUpWhenMCPGatewayFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	_, err = client.CreateSandbox(context.Background(), WithMCP(map[string]any{"server": "stdio"}))
-	if err == nil || !strings.Contains(err.Error(), "failed to start MCP gateway: gateway failed") {
-		t.Fatalf("CreateSandbox error = %v", err)
+	sandbox, err := client.CreateSandbox(context.Background(), WithMCP(map[string]any{"server": "stdio"}))
+	if err != nil {
+		t.Fatalf("CreateSandbox: %v", err)
 	}
-	if !deleted {
-		t.Fatal("expected created sandbox to be deleted")
+	if deleted {
+		t.Fatal("gateway was treated as a foreground failure and deleted the sandbox")
+	}
+	if timeoutHeader != "" {
+		t.Fatalf("Connect-Timeout-Ms = %q, want no command timeout", timeoutHeader)
+	}
+	if !strings.Contains(gatewayCommand, "mcp-gateway --config") {
+		t.Fatalf("gateway command = %q", gatewayCommand)
+	}
+	if gatewayToken == "" || sandbox.MCPToken() != gatewayToken {
+		t.Fatalf("gateway token env = %q sandbox token = %q", gatewayToken, sandbox.MCPToken())
 	}
 }
