@@ -187,3 +187,58 @@ func TestCommandRequestTimeoutControlsStreamSetup(t *testing.T) {
 		t.Fatalf("request timeout took too long: %s", elapsed)
 	}
 }
+
+func TestDoStreamRequestClosesLateResponseAfterTimeout(t *testing.T) {
+	releaseResponse := make(chan struct{})
+	bodyClosed := make(chan struct{})
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		<-releaseResponse
+		body := &closeNotifyReadCloser{
+			Reader: bytes.NewReader(testConnectEnvelope(t, `{"event":{"start":{"pid":42}}}`)),
+			closed: bodyClosed,
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/connect+json"}},
+			Body:       body,
+		}, nil
+	})
+	client, err := NewClient(
+		WithAPIKey("e2b_0123"),
+		WithAPIURL("https://api.test"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	sandbox := &Sandbox{client: client, sandboxID: "sbx", envdAPIURL: "https://envd.test", envdVersion: "0.5.2"}
+	sandbox.Commands = newCommands(sandbox)
+	_, err = sandbox.connectServerStream(context.Background(), "process.Process", "Start", map[string]any{}, nil, 0, time.Millisecond, nil)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	var timeoutErr *TimeoutError
+	if !errors.As(err, &timeoutErr) {
+		t.Fatalf("error = %T %v, want TimeoutError", err, err)
+	}
+	close(releaseResponse)
+	select {
+	case <-bodyClosed:
+	case <-time.After(time.Second):
+		t.Fatal("late response body was not closed")
+	}
+}
+
+type closeNotifyReadCloser struct {
+	io.Reader
+	closed chan struct{}
+}
+
+func (c *closeNotifyReadCloser) Close() error {
+	select {
+	case <-c.closed:
+	default:
+		close(c.closed)
+	}
+	return nil
+}
