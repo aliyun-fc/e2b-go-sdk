@@ -49,3 +49,18 @@ jobs:
           coverage=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
           echo ">>> 库包语句覆盖率：${coverage}%（下限 ${MIN_COVERAGE}%）"
           awk -v c="$coverage" -v t="$MIN_COVERAGE" 'BEGIN { if (c+0 < t+0) { printf "覆盖率 %s%% 低于下限 %s%%，请补充单元测试\n", c, t; exit 1 } }'
+
+  # 真实北京环境 E2E：会创建并清理临时 sandbox，用于验证 SDK 数据面与控制面集成。
+  go-sdk-e2e-beijing:
+    image: reg.docker.alibaba-inc.com/serverless-devs/e2b-runtime-ci:v2
+    envs:
+      E2B_API_KEY: "${{ secrets.E2B_API_KEY_BEIJING}}"
+      E2B_API_URL: "https://api.cn-beijing.e2b.fc.aliyuncs.com"
+      E2B_DOMAIN: "cn-beijing.e2b.fc.aliyuncs.com"
+      E2B_E2E_TEMPLATE: "code-interpreter-v1"
+      E2B_E2E_TIMEOUT_SECONDS: "900"
+    steps:
+      - uses: checkout
+      - run: |
+          go version
+          go run ./test/e2e

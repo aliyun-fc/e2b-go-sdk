@@ -17,8 +17,8 @@ func RunTemplate(ctx context.Context) {
 		log.Fatal("set E2B_API_KEY first")
 	}
 
-	apiURL := normalizeAPIURL(env("E2B_SAMPLE_API_URL", defaultAPIURL))
-	domain := env("E2B_SAMPLE_DOMAIN", defaultDomain)
+	apiURL := normalizeAPIURL(env("E2B_API_URL", defaultAPIURL))
+	domain := env("E2B_DOMAIN", defaultDomain)
 	fmt.Printf("using api_url=%s domain=%s\n", apiURL, domain)
 
 	client, err := e2b.NewClient(

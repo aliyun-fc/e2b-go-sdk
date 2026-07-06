@@ -293,7 +293,57 @@ func TestFilesystemWriteMultipartDecodeError(t *testing.T) {
 	}
 }
 
-func TestFilesystemWriteFilesMultipleUsesMultipart(t *testing.T) {
+func TestFilesystemWriteFilesMultipleDefaultsToOctetStream(t *testing.T) {
+	// Arrange: Go WriteEntry data is always an io.Reader, matching Python's
+	// file-like upload path. New envd versions can stream each file separately.
+	var paths []string
+	var bodies []string
+	var contentTypes []string
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		path := r.URL.Query().Get("path")
+		data, _ := io.ReadAll(r.Body)
+		paths = append(paths, path)
+		bodies = append(bodies, string(data))
+		contentTypes = append(contentTypes, r.Header.Get("Content-Type"))
+
+		switch path {
+		case "/a":
+			return jsonResponse(http.StatusOK, `[{"name":"a","path":"/a","type":"file"}]`, nil), nil
+		case "/b":
+			return jsonResponse(http.StatusOK, `[{"name":"b","path":"/b","type":"file"}]`, nil), nil
+		default:
+			return jsonResponse(http.StatusBadRequest, `{"message":"bad path"}`, nil), nil
+		}
+	})
+	f := fcovFilesystem(t, transport, "0.6.4")
+
+	// Act
+	results, err := f.WriteFiles(context.Background(), []WriteEntry{
+		{Path: "/a", Data: strings.NewReader("a")},
+		{Path: "/b", Data: strings.NewReader("b")},
+	})
+	if err != nil {
+		t.Fatalf("WriteFiles: %v", err)
+	}
+
+	// Assert
+	if len(results) != 2 {
+		t.Fatalf("results = %#v", results)
+	}
+	if len(paths) != 2 || paths[0] != "/a" || paths[1] != "/b" {
+		t.Fatalf("paths = %#v", paths)
+	}
+	if len(bodies) != 2 || bodies[0] != "a" || bodies[1] != "b" {
+		t.Fatalf("bodies = %#v", bodies)
+	}
+	for _, contentType := range contentTypes {
+		if contentType != "application/octet-stream" {
+			t.Fatalf("Content-Type = %#v, want octet-stream", contentTypes)
+		}
+	}
+}
+
+func TestFilesystemWriteFilesMultipleCanForceMultipart(t *testing.T) {
 	// Arrange
 	var contentType string
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -307,7 +357,7 @@ func TestFilesystemWriteFilesMultipleUsesMultipart(t *testing.T) {
 	results, err := f.WriteFiles(context.Background(), []WriteEntry{
 		{Path: "/a", Data: strings.NewReader("a")},
 		{Path: "/b", Data: strings.NewReader("b")},
-	})
+	}, WithOctetStreamUpload(false))
 	if err != nil {
 		t.Fatalf("WriteFiles: %v", err)
 	}
@@ -337,7 +387,7 @@ func TestFilesystemListRejectsInvalidDepth(t *testing.T) {
 
 func TestFilesystemListDecodesEntriesAndSkipsUnknownType(t *testing.T) {
 	// Arrange: one valid entry and one with an unrecognized type (dropped).
-	body := `{"entries":[{"name":"a","path":"/a","type":"FILE_TYPE_FILE","size":3},{"name":"b","path":"/b","type":"weird"}]}`
+	body := `{"entries":[{"name":"a","path":"/a","type":"FILE_TYPE_FILE","size":"3"},{"name":"b","path":"/b","type":"weird"}]}`
 	var seen http.Request
 	f := fcovFilesystem(t, fcovResponder(http.StatusOK, body, &seen), "0.5.2")
 
@@ -369,7 +419,7 @@ func TestFilesystemListMapsError(t *testing.T) {
 
 func TestFilesystemGetInfoSuccess(t *testing.T) {
 	// Arrange
-	body := `{"entry":{"name":"a","path":"/a","type":"dir","mode":493,"permissions":"drwxr-xr-x"}}`
+	body := `{"entry":{"name":"a","path":"/a","type":"dir","size":"4096","mode":493,"permissions":"drwxr-xr-x"}}`
 	f := fcovFilesystem(t, fcovResponder(http.StatusOK, body, nil), "0.5.2")
 
 	// Act
@@ -379,7 +429,7 @@ func TestFilesystemGetInfoSuccess(t *testing.T) {
 	}
 
 	// Assert
-	if info.Type != FileTypeDir || info.Permissions != "drwxr-xr-x" {
+	if info.Type != FileTypeDir || info.Size != 4096 || info.Permissions != "drwxr-xr-x" {
 		t.Fatalf("info = %#v", info)
 	}
 }
@@ -450,7 +500,7 @@ func TestFilesystemRemoveSuccessAndError(t *testing.T) {
 
 func TestFilesystemRenameSuccess(t *testing.T) {
 	// Arrange
-	f := fcovFilesystem(t, fcovResponder(http.StatusOK, `{"entry":{"name":"new","path":"/new","type":"file"}}`, nil), "0.5.2")
+	f := fcovFilesystem(t, fcovResponder(http.StatusOK, `{"entry":{"name":"new","path":"/new","type":"file","size":"12"}}`, nil), "0.5.2")
 
 	// Act
 	info, err := f.Rename(context.Background(), "/old", "/new")
@@ -459,7 +509,7 @@ func TestFilesystemRenameSuccess(t *testing.T) {
 	}
 
 	// Assert
-	if info.Path != "/new" {
+	if info.Path != "/new" || info.Size != 12 {
 		t.Fatalf("info = %#v", info)
 	}
 }

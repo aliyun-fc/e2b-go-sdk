@@ -61,7 +61,7 @@ func TestWatchHandleGetNewEventsDecodesEvents(t *testing.T) {
 	// Arrange: mix of event types plus one carrying an entry.
 	body := `{"events":[` +
 		`{"name":"a","type":"EVENT_TYPE_CREATE"},` +
-		`{"name":"b","type":"write","entry":{"name":"b","path":"/b","type":"file","size":9}}` +
+		`{"name":"b","type":"write","entry":{"name":"b","path":"/b","type":"file","size":"9"}}` +
 		`]}`
 	var seen http.Request
 	handle := fcovWatchHandle(t, fcovResponder(http.StatusOK, body, &seen))
