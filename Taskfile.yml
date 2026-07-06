@@ -1,0 +1,52 @@
+version: '3'
+
+# 本仓库为单一扁平 Go 包，Taskfile 统一 fmt / lint / test 入口，
+# 供本地开发与 .githooks/pre-commit 复用（CI 见 .aoneci/ci.yaml）。
+
+vars:
+  # golangci-lint 版本与 CI 保持一致；v1.64.x 起兼容 Go 1.24 的导出数据格式。
+  GOLANGCI_LINT_VERSION: v1.64.8
+
+tasks:
+  fmt:
+    desc: 统一格式化 Go 代码（gofmt）
+    cmds:
+      - gofmt -l -w .
+    sources:
+      - "**/*.go"
+
+  lint:
+    desc: 统一检查 Go 代码（gofmt 校验 + go vet + golangci-lint）
+    cmds:
+      - |
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "以下文件需要 gofmt，请运行 'task fmt'：" >&2
+          echo "$unformatted" >&2
+          exit 1
+        fi
+      - go vet ./...
+      - go run github.com/golangci/golangci-lint/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}} run ./...
+
+  test:
+    desc: 运行单元测试
+    cmds:
+      - go test ./...
+
+  cover:
+    desc: 统计库包覆盖率并校验下限（与 CI 一致，默认 90%）
+    vars:
+      MIN_COVERAGE: '{{.MIN_COVERAGE | default "90"}}'
+    cmds:
+      - go test -count=1 -covermode=count -coverprofile=coverage.out .
+      - go tool cover -func=coverage.out | tail -1
+      - |
+        coverage=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+        echo "库包语句覆盖率：${coverage}%（下限 {{.MIN_COVERAGE}}%）"
+        awk -v c="$coverage" -v t="{{.MIN_COVERAGE}}" 'BEGIN { if (c+0 < t+0) { printf "覆盖率 %s%% 低于下限 %s%%\n", c, t; exit 1 } }'
+
+  check:
+    desc: 提交前本地全量检查（lint + test + 覆盖率）
+    cmds:
+      - task: lint
+      - task: cover

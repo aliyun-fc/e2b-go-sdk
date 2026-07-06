@@ -1,0 +1,27 @@
+# golangci-lint 配置（兼容 v1.64.x）。
+# 目标：在 golangci-lint 默认 linter 之上补充格式化与常见问题检查，
+# 与 Taskfile.yml、.githooks/pre-commit、.aoneci/ci.yaml 使用同一套规则。
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # 保留默认启用的 linter（errcheck、govet、ineffassign、staticcheck、unused 等），
+  # 再显式补充下列几项。
+  enable:
+    - gofmt        # gofmt 格式一致性
+    - goimports    # import 分组与排序
+    - misspell     # 英文拼写
+    - unconvert    # 冗余类型转换
+    - bodyclose    # HTTP response body 必须关闭
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/e2b-dev/e2b-go-sdk
+
+issues:
+  # 保留 golangci-lint 内置默认排除项（如 defer Body.Close() 等惯用写法），
+  # 只展示真正值得关注的问题；不限制每类/同类问题的展示数量。
+  max-issues-per-linter: 0
+  max-same-issues: 0

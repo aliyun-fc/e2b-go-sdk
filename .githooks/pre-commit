@@ -1,0 +1,35 @@
+#!/bin/sh
+# pre-commit hook: 提交前统一格式化并静态检查 Go 代码
+# 启用方式: git config core.hooksPath .githooks
+#
+# 行为:
+#   1. 运行 `task fmt` 统一 gofmt 格式，并把格式化产生的变更重新加入暂存区;
+#   2. 运行 `task lint`（gofmt 校验 + go vet + golangci-lint），有问题则阻止提交。
+
+set -e
+
+echo ">>> pre-commit: 统一 Go 代码格式与静态检查..."
+
+# 检测 task 命令（优先 go-task，兼容 task）
+if command -v go-task >/dev/null 2>&1; then
+    TASK_CMD="go-task"
+elif command -v task >/dev/null 2>&1; then
+    TASK_CMD="task"
+else
+    echo "错误: 未找到 go-task 或 task 命令，请安装 go-task (https://taskfile.dev/)" >&2
+    exit 1
+fi
+
+# 1) 统一格式化
+$TASK_CMD fmt
+
+# 格式化若产生变更，自动重新暂存，避免提交未格式化的内容
+if ! git diff --quiet; then
+    git add -A
+    echo ">>> pre-commit: 格式化变更已自动暂存"
+fi
+
+# 2) 静态检查（失败即阻止提交）
+$TASK_CMD lint
+
+echo ">>> pre-commit: 检查通过"

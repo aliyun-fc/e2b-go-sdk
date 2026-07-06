@@ -1,0 +1,51 @@
+name: CI
+
+triggers:
+  push:
+    branches:
+      - master
+  merge_request:
+    target-branches:
+      - master
+
+envs:
+  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/X11R6/bin:/usr/local/go/bin:/root/go/bin
+  # 部分执行环境需要显式 Go 缓存目录（见 CLAUDE.md）。
+  GOCACHE: /tmp/e2b-go-sdk-gocache
+  # 单元测试覆盖率下限（仅统计库包，examples 为薄 CLI 不计入）。
+  MIN_COVERAGE: "90"
+
+jobs:
+  # 统一格式与静态检查：gofmt 校验 + go vet + golangci-lint。
+  go-sdk-lint:
+    image: reg.docker.alibaba-inc.com/serverless-devs/e2b-runtime-ci:v2
+    steps:
+      - uses: checkout
+      - run: |
+          go version
+          echo ">>> gofmt 格式校验..."
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "以下文件需要 gofmt，请本地运行 'task fmt'：" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+          echo ">>> go vet..."
+          go vet ./...
+          echo ">>> golangci-lint..."
+          go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...
+
+  # 单元测试 + 覆盖率门槛（库包语句覆盖率必须 >= MIN_COVERAGE）。
+  go-sdk-ut:
+    image: reg.docker.alibaba-inc.com/serverless-devs/e2b-runtime-ci:v2
+    steps:
+      - uses: checkout
+      - run: |
+          go version
+          # 覆盖率只统计库包（根目录 package e2b），examples 是薄 CLI 无测试、不计入。
+          go test -count=1 -v -covermode=count -coverprofile=coverage.out .
+          echo ">>> 覆盖率明细："
+          go tool cover -func=coverage.out | tail -1
+          coverage=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+          echo ">>> 库包语句覆盖率：${coverage}%（下限 ${MIN_COVERAGE}%）"
+          awk -v c="$coverage" -v t="$MIN_COVERAGE" 'BEGIN { if (c+0 < t+0) { printf "覆盖率 %s%% 低于下限 %s%%，请补充单元测试\n", c, t; exit 1 } }'

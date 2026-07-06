@@ -91,7 +91,7 @@ func TestTemplateIntegrationBuildCRUD(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateSandbox from built template: %v", err)
 		}
-		defer sandbox.Kill(context.Background())
+		defer func() { _, _ = sandbox.Kill(context.Background()) }()
 
 		result, err := sandbox.Commands.Run(ctx, "python3 -c 'print(\"helloworld\")'", WithCommandTimeout(60*time.Second), WithCommandRequestTimeout(120*time.Second))
 		if err != nil {
@@ -164,7 +164,7 @@ func TestTemplateIntegrationBuildCopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSandbox from COPY template: %v", err)
 	}
-	defer sandbox.Kill(context.Background())
+	defer func() { _, _ = sandbox.Kill(context.Background()) }()
 
 	result, err := sandbox.Commands.Run(ctx, "cat /tmp/e2b-copy-hello.txt", WithCommandTimeout(60*time.Second), WithCommandRequestTimeout(120*time.Second))
 	if err != nil {

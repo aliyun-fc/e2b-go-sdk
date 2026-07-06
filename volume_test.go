@@ -14,7 +14,8 @@ func TestVolumeRequestReturnsTransportError(t *testing.T) {
 		return nil, want
 	}))
 	volume := &Volume{client: client, volumeID: "vol", token: "token", apiURL: "https://volume.test"}
-	_, err := volume.volumeRequest(context.Background(), http.MethodGet, "/volumecontent/vol/file", url.Values{"path": []string{"/x"}}, nil, nil, volumeOptions{})
+	// transport 恒定返回错误，volumeRequest 走错误分支不产生可关闭的 body。
+	_, err := volume.volumeRequest(context.Background(), http.MethodGet, "/volumecontent/vol/file", url.Values{"path": []string{"/x"}}, nil, nil, volumeOptions{}) //nolint:bodyclose // error path returns no response body
 	if !errors.Is(err, want) {
 		t.Fatalf("error = %v, want %v", err, want)
 	}
