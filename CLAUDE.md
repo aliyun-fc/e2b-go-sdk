@@ -43,7 +43,8 @@ GOCACHE=/tmp/e2b-go-sdk-gocache go vet ./...
 task fmt     # gofmt 统一格式化
 task lint    # gofmt 校验 + go vet + golangci-lint（v1.64.8）
 task test    # go test ./...
-task check   # 提交前全量检查：lint + test
+task cover   # 库包覆盖率并校验下限（默认 90%，与 CI 一致）
+task check   # 提交前全量检查：lint + cover
 ```
 
 启用提交前钩子（自动 `task fmt` 并 `task lint`）：
@@ -54,6 +55,7 @@ git config core.hooksPath .githooks
 
 CI 定义在 `.aoneci/ci.yaml`（push/merge_request 到 `master` 触发），
 `go-sdk-lint` 与 `go-sdk-ut` 两个 job 分别对应上面的 lint 与 test；
+`go-sdk-ut` 强制库包语句覆盖率 >= `MIN_COVERAGE`（默认 90%，examples 薄 CLI 不计入）。
 lint 规则集中在 `.golangci.yml`，三处（Taskfile、CI、hook）共用同一版本。
 
 真实环境验证会创建云端资源，需要设置 `E2B_API_KEY`：

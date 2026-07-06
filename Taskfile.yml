@@ -33,8 +33,20 @@ tasks:
     cmds:
       - go test ./...
 
+  cover:
+    desc: 统计库包覆盖率并校验下限（与 CI 一致，默认 90%）
+    vars:
+      MIN_COVERAGE: '{{.MIN_COVERAGE | default "90"}}'
+    cmds:
+      - go test -count=1 -covermode=count -coverprofile=coverage.out .
+      - go tool cover -func=coverage.out | tail -1
+      - |
+        coverage=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+        echo "库包语句覆盖率：${coverage}%（下限 {{.MIN_COVERAGE}}%）"
+        awk -v c="$coverage" -v t="{{.MIN_COVERAGE}}" 'BEGIN { if (c+0 < t+0) { printf "覆盖率 %s%% 低于下限 %s%%\n", c, t; exit 1 } }'
+
   check:
-    desc: 提交前本地全量检查（lint + test）
+    desc: 提交前本地全量检查（lint + test + 覆盖率）
     cmds:
       - task: lint
-      - task: test
+      - task: cover
