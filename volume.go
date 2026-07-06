@@ -300,13 +300,13 @@ func (v *Volume) volumeRequest(ctx context.Context, method, path string, query u
 	if timeout == 0 {
 		timeout = defaultVolumeFileTimeout
 	}
-	ctx, cancel := withTimeout(ctx, timeout)
+	requestCtx, cancel := withTimeout(ctx, timeout)
 	// The response body outlives this function (callers stream/close it), so the
 	// timeout must govern the whole request; cancel is invoked only on the error
 	// paths below, and otherwise the deadline fires on its own. Keep the binding
 	// to satisfy go vet's lostcancel check.
 	_ = cancel
-	req, err := http.NewRequestWithContext(ctx, method, target, body)
+	req, err := http.NewRequestWithContext(requestCtx, method, target, body)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -320,9 +320,13 @@ func (v *Volume) volumeRequest(ctx context.Context, method, path string, query u
 	}
 	res, err := v.client.http.Do(req)
 	if err != nil {
-		ctxErr := ctx.Err()
+		callerErr := ctx.Err()
+		requestErr := requestCtx.Err()
 		cancel()
-		if ctxErr != nil {
+		if callerErr != nil {
+			return nil, callerErr
+		}
+		if requestErr != nil {
 			return nil, formatRequestTimeout()
 		}
 		return nil, err

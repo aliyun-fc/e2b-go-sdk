@@ -663,7 +663,7 @@ func TestVolumeRequestExplicitTimeout(t *testing.T) {
 	}
 }
 
-func TestVolumeRequestCanceledContextReportsTimeout(t *testing.T) {
+func TestVolumeRequestCanceledContextReturnsContextError(t *testing.T) {
 	// Arrange
 	v := vcovVolume(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		// Mimic a real transport aborting when the request context is done.
@@ -676,9 +676,8 @@ func TestVolumeRequestCanceledContextReportsTimeout(t *testing.T) {
 	_, err := v.ReadFileBytes(ctx, "/a")
 
 	// Assert
-	var te *TimeoutError
-	if !errors.As(err, &te) {
-		t.Fatalf("error = %v, want *TimeoutError", err)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 }
 
