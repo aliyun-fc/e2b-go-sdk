@@ -92,6 +92,9 @@ func (g *Git) RemoteAdd(ctx context.Context, path, name, remoteURL string, overw
 	if err := rejectGitOptionArg("remote URL", remoteURL); err != nil {
 		return err
 	}
+	if err := rejectGitRemoteExt(remoteURL); err != nil {
+		return err
+	}
 	if overwrite {
 		_ = g.runGit(ctx, []string{"git", "-C", path, "remote", "remove", "--", name}, options)
 	}
@@ -250,6 +253,9 @@ func (g *Git) Push(ctx context.Context, path, remote, branch, username, password
 	if err := rejectGitOptionArg("remote", remote); err != nil {
 		return err
 	}
+	if err := rejectGitRemoteExt(remote); err != nil {
+		return err
+	}
 	if err := rejectGitOptionArg("branch", branch); err != nil {
 		return err
 	}
@@ -286,6 +292,9 @@ func (g *Git) Pull(ctx context.Context, path, remote, branch, username, password
 	if err := rejectGitOptionArg("remote", remote); err != nil {
 		return err
 	}
+	if err := rejectGitRemoteExt(remote); err != nil {
+		return err
+	}
 	if err := rejectGitOptionArg("branch", branch); err != nil {
 		return err
 	}
@@ -313,6 +322,9 @@ func (g *Git) Pull(ctx context.Context, path, remote, branch, username, password
 
 func (g *Git) SetConfig(ctx context.Context, key, value, scope, path string, opts ...GitOption) error {
 	options := gitOptionsFrom(opts...)
+	if err := rejectGitOptionArg("config key", key); err != nil {
+		return err
+	}
 	args := []string{"git"}
 	if path != "" {
 		args = append(args, "-C", path)
@@ -327,6 +339,9 @@ func (g *Git) SetConfig(ctx context.Context, key, value, scope, path string, opt
 
 func (g *Git) GetConfig(ctx context.Context, key, scope, path string, opts ...GitOption) (string, error) {
 	options := gitOptionsFrom(opts...)
+	if err := rejectGitOptionArg("config key", key); err != nil {
+		return "", err
+	}
 	args := []string{"git"}
 	if path != "" {
 		args = append(args, "-C", path)

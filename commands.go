@@ -36,7 +36,7 @@ func (c *Commands) List(ctx context.Context, requestTimeout ...time.Duration) ([
 			} `json:"config"`
 		} `json:"processes"`
 	}
-	err := c.sandbox.connectUnary(ctx, "process.Process", "List", map[string]any{}, &response, nil, timeout, nil)
+	err := c.sandbox.connectUnary(ctx, "process.Process", "List", map[string]any{}, &response, nil, optionalTimeout(timeout), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (c *Commands) Kill(ctx context.Context, pid int, requestTimeout ...time.Dur
 		"process": map[string]int{"pid": pid},
 		"signal":  "SIGNAL_SIGKILL",
 	}
-	err := c.sandbox.connectUnary(ctx, "process.Process", "SendSignal", req, nil, nil, timeout, nil)
+	err := c.sandbox.connectUnary(ctx, "process.Process", "SendSignal", req, nil, nil, optionalTimeout(timeout), nil)
 	if err == nil {
 		return true, nil
 	}
@@ -79,7 +79,7 @@ func (c *Commands) SendStdin(ctx context.Context, pid int, data []byte, requestT
 		"process": map[string]int{"pid": pid},
 		"input":   map[string]string{"stdin": base64.StdEncoding.EncodeToString(data)},
 	}
-	return c.sandbox.connectUnary(ctx, "process.Process", "SendInput", req, nil, nil, timeout, nil)
+	return c.sandbox.connectUnary(ctx, "process.Process", "SendInput", req, nil, nil, optionalTimeout(timeout), nil)
 }
 
 // CloseStdin closes command stdin.
@@ -89,7 +89,7 @@ func (c *Commands) CloseStdin(ctx context.Context, pid int, requestTimeout ...ti
 	}
 	timeout := firstDuration(requestTimeout)
 	req := map[string]any{"process": map[string]int{"pid": pid}}
-	return c.sandbox.connectUnary(ctx, "process.Process", "CloseStdin", req, nil, nil, timeout, nil)
+	return c.sandbox.connectUnary(ctx, "process.Process", "CloseStdin", req, nil, nil, optionalTimeout(timeout), nil)
 }
 
 // Run starts a command and waits for it to finish.

@@ -6,8 +6,14 @@ import (
 )
 
 func TestNewRandomTokenUsesCryptoSizedSecret(t *testing.T) {
-	first := newRandomToken()
-	second := newRandomToken()
+	first, err := newRandomToken()
+	if err != nil {
+		t.Fatalf("newRandomToken: %v", err)
+	}
+	second, err := newRandomToken()
+	if err != nil {
+		t.Fatalf("newRandomToken: %v", err)
+	}
 	if first == second {
 		t.Fatal("expected distinct tokens")
 	}

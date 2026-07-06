@@ -54,7 +54,7 @@ func (f *Filesystem) Read(ctx context.Context, path string, opts ...FileOption) 
 // ReadBytes reads a file as bytes.
 func (f *Filesystem) ReadBytes(ctx context.Context, path string, opts ...FileOption) ([]byte, error) {
 	options := fileOptionsFrom(opts...)
-	res, err := f.fileRequest(ctx, http.MethodGet, path, options.user, nil, nil, options.requestTimeout, nil)
+	res, err := f.fileRequest(ctx, http.MethodGet, path, options.user, nil, nil, options.handshakeTimeout(), options.streamIdle, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (f *Filesystem) ReadBytes(ctx context.Context, path string, opts ...FileOpt
 // ReadStream streams file content. Call Close when finished if not fully consumed.
 func (f *Filesystem) ReadStream(ctx context.Context, path string, opts ...FileOption) (*FileStreamReader, error) {
 	options := fileOptionsFrom(opts...)
-	res, err := f.fileRequest(ctx, http.MethodGet, path, options.user, nil, nil, options.requestTimeout, nil)
+	res, err := f.fileRequest(ctx, http.MethodGet, path, options.user, nil, nil, options.handshakeTimeout(), options.streamIdle, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +156,7 @@ func (f *Filesystem) writeOctet(ctx context.Context, file WriteEntry, options fi
 	for k, v := range metadataHeaders(options.metadata) {
 		headers[k] = v
 	}
-	res, err := f.fileRequest(ctx, http.MethodPost, file.Path, options.user, body, headers, options.requestTimeout, nil)
+	res, err := f.fileRequest(ctx, http.MethodPost, file.Path, options.user, body, headers, options.handshakeTimeout(), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (f *Filesystem) writeMultipart(ctx context.Context, files []WriteEntry, opt
 	if len(files) == 1 {
 		path = files[0].Path
 	}
-	res, err := f.fileRequest(ctx, http.MethodPost, path, options.user, body, headers, options.requestTimeout, nil)
+	res, err := f.fileRequest(ctx, http.MethodPost, path, options.user, body, headers, options.handshakeTimeout(), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (f *Filesystem) List(ctx context.Context, path string, opts ...FileOption) 
 	var response struct {
 		Entries []entryInfoJSON `json:"entries"`
 	}
-	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "ListDir", req, &response, options.user, options.requestTimeout, nil)
+	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "ListDir", req, &response, options.user, options.handshakeTimeout(), nil)
 	if err != nil {
 		return nil, mapFilesystemError(err)
 	}
@@ -261,7 +261,7 @@ func (f *Filesystem) GetInfo(ctx context.Context, path string, opts ...FileOptio
 	var response struct {
 		Entry entryInfoJSON `json:"entry"`
 	}
-	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "Stat", map[string]string{"path": path}, &response, options.user, options.requestTimeout, nil)
+	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "Stat", map[string]string{"path": path}, &response, options.user, options.handshakeTimeout(), nil)
 	if err != nil {
 		return EntryInfo{}, mapFilesystemError(err)
 	}
@@ -275,7 +275,7 @@ func (f *Filesystem) GetInfo(ctx context.Context, path string, opts ...FileOptio
 // Remove removes a file or directory.
 func (f *Filesystem) Remove(ctx context.Context, path string, opts ...FileOption) error {
 	options := fileOptionsFrom(opts...)
-	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "Remove", map[string]string{"path": path}, nil, options.user, options.requestTimeout, nil)
+	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "Remove", map[string]string{"path": path}, nil, options.user, options.handshakeTimeout(), nil)
 	return mapFilesystemError(err)
 }
 
@@ -286,7 +286,7 @@ func (f *Filesystem) Rename(ctx context.Context, oldPath, newPath string, opts .
 		Entry entryInfoJSON `json:"entry"`
 	}
 	req := map[string]string{"source": oldPath, "destination": newPath}
-	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "Move", req, &response, options.user, options.requestTimeout, nil)
+	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "Move", req, &response, options.user, options.handshakeTimeout(), nil)
 	if err != nil {
 		return EntryInfo{}, mapFilesystemError(err)
 	}
@@ -300,7 +300,7 @@ func (f *Filesystem) Rename(ctx context.Context, oldPath, newPath string, opts .
 // MakeDir creates a directory and parents as needed. It returns false if the directory already exists.
 func (f *Filesystem) MakeDir(ctx context.Context, path string, opts ...FileOption) (bool, error) {
 	options := fileOptionsFrom(opts...)
-	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "MakeDir", map[string]string{"path": path}, nil, options.user, options.requestTimeout, nil)
+	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "MakeDir", map[string]string{"path": path}, nil, options.user, options.handshakeTimeout(), nil)
 	if err == nil {
 		return true, nil
 	}
@@ -331,7 +331,7 @@ func (f *Filesystem) WatchDir(ctx context.Context, path string, opts ...WatchOpt
 	var response struct {
 		WatcherID string `json:"watcherId"`
 	}
-	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "CreateWatcher", req, &response, options.user, options.requestTimeout, map[string]string{
+	err := f.sandbox.connectUnary(ctx, "filesystem.Filesystem", "CreateWatcher", req, &response, options.user, options.handshakeTimeout(), map[string]string{
 		keepalivePingHeader: fmt.Sprintf("%d", keepalivePingIntervalSec),
 	})
 	if err != nil {
@@ -340,7 +340,7 @@ func (f *Filesystem) WatchDir(ctx context.Context, path string, opts ...WatchOpt
 	return &WatchHandle{filesystem: f, watcherID: response.WatcherID, user: options.user}, nil
 }
 
-func (f *Filesystem) fileRequest(ctx context.Context, method, path string, user *string, body io.Reader, headers map[string]string, timeout time.Duration, query url.Values) (*http.Response, error) {
+func (f *Filesystem) fileRequest(ctx context.Context, method, path string, user *string, body io.Reader, headers map[string]string, handshakeTimeout, streamIdle *time.Duration, query url.Values) (*http.Response, error) {
 	if query == nil {
 		query = url.Values{}
 	}
@@ -361,12 +361,37 @@ func (f *Filesystem) fileRequest(ctx context.Context, method, path string, user 
 		target += "?" + encoded
 	}
 
-	ctx, cancel := withTimeout(ctx, f.sandbox.client.config.requestContextTimeout(timeout))
-	_ = cancel
-	req, err := http.NewRequestWithContext(ctx, method, target, body)
+	// Match the Python SDK: the request timeout bounds only the handshake, while
+	// the transfer body is governed by a per-chunk idle timeout (defaults to the
+	// request timeout; a caller can override or disable it with 0). The request
+	// context has no total deadline — an idleTracker cancels it only when I/O
+	// stalls, so large downloads/uploads are not aborted mid-transfer.
+	//
+	// handshakeTimeout is nil when unset (falls back to the configured
+	// RequestTimeout) and non-nil when explicit — including an explicit 0, which
+	// disables the timeout, mirroring Python's request_timeout=0 -> None.
+	handshake := f.sandbox.client.config.RequestTimeout
+	if handshakeTimeout != nil {
+		handshake = *handshakeTimeout
+	}
+	bodyIdle := handshake
+	if streamIdle != nil {
+		bodyIdle = *streamIdle
+	}
+	reqCtx, cancel := context.WithCancel(ctx)
+	tracker := newIdleTracker(cancel, bodyIdle)
+	tracker.arm(handshake)
+
+	req, err := http.NewRequestWithContext(reqCtx, method, target, body)
 	if err != nil {
+		tracker.stop()
 		cancel()
 		return nil, err
+	}
+	// Wrap after construction so http.NewRequestWithContext keeps its
+	// Content-Length/GetBody detection on the original body reader.
+	if req.Body != nil {
+		req.Body = tracker.wrapRequestBody(req.Body)
 	}
 	for k, v := range f.sandbox.sandboxHeaders(user) {
 		req.Header.Set(k, v)
@@ -376,13 +401,18 @@ func (f *Filesystem) fileRequest(ctx context.Context, method, path string, user 
 	}
 	res, err := f.sandbox.client.http.Do(req)
 	if err != nil {
+		tracker.stop()
 		cancel()
-		if ctx.Err() != nil {
+		if tracker.timedOut() {
 			return nil, formatRequestTimeout()
 		}
 		return nil, err
 	}
-	res.Body = cancelReadCloser{ReadCloser: res.Body, cancel: cancel}
+	// Headers have arrived, so the handshake window is done. Pause the timer and
+	// let the body reads re-arm it per wire wait (a slow consumer between reads
+	// must not trip the idle timeout).
+	tracker.pause()
+	res.Body = tracker.wrapResponseBody(res.Body)
 	return res, nil
 }
 
@@ -522,12 +552,25 @@ func escapeQuotes(s string) string {
 }
 
 type fileOptions struct {
-	user           *string
-	requestTimeout time.Duration
-	depth          *int
-	gzip           bool
-	useOctetStream bool
-	metadata       map[string]string
+	user              *string
+	requestTimeout    time.Duration
+	requestTimeoutSet bool
+	streamIdle        *time.Duration
+	depth             *int
+	gzip              bool
+	useOctetStream    bool
+	metadata          map[string]string
+}
+
+// handshakeTimeout returns the explicit request timeout when set (nil
+// otherwise), so an explicit 0 is preserved as "disabled" rather than falling
+// back to the configured default.
+func (o fileOptions) handshakeTimeout() *time.Duration {
+	if !o.requestTimeoutSet {
+		return nil
+	}
+	d := o.requestTimeout
+	return &d
 }
 
 // FileOption configures filesystem reads and writes.
@@ -538,9 +581,28 @@ func WithFileUser(user string) FileOption {
 	return func(o *fileOptions) { o.user = &user }
 }
 
-// WithFileRequestTimeout sets a filesystem request timeout.
+// WithFileRequestTimeout sets a filesystem request timeout. For reads and
+// writes it bounds the initial handshake (and, for reads, the default per-chunk
+// idle window of the streamed body unless overridden by
+// WithFileStreamIdleTimeout). For other operations it bounds the request.
+// Passing 0 explicitly disables the timeout (matching the Python SDK); leaving
+// it unset falls back to the client's configured RequestTimeout.
 func WithFileRequestTimeout(timeout time.Duration) FileOption {
-	return func(o *fileOptions) { o.requestTimeout = timeout }
+	return func(o *fileOptions) {
+		o.requestTimeout = timeout
+		o.requestTimeoutSet = true
+	}
+}
+
+// WithFileStreamIdleTimeout sets the per-chunk idle timeout for the body of a
+// streamed read (ReadStream/ReadBytes), independently of the handshake timeout.
+// The transfer is aborted only when no data arrives on the wire within this
+// window, so slow-but-progressing large downloads — and slow consumers between
+// reads — are not aborted. It defaults to the request timeout; pass 0 to disable
+// the body timeout entirely. It does not affect writes, whose body is bounded by
+// the request timeout.
+func WithFileStreamIdleTimeout(timeout time.Duration) FileOption {
+	return func(o *fileOptions) { o.streamIdle = &timeout }
 }
 
 // WithListDepth sets List depth.
@@ -576,9 +638,20 @@ func fileOptionsFrom(opts ...FileOption) fileOptions {
 type watchOptions struct {
 	user               *string
 	requestTimeout     time.Duration
+	requestTimeoutSet  bool
 	recursive          bool
 	includeEntry       bool
 	allowNetworkMounts bool
+}
+
+// handshakeTimeout mirrors fileOptions.handshakeTimeout: an explicit 0 is
+// preserved as "disabled" rather than falling back to the configured default.
+func (o watchOptions) handshakeTimeout() *time.Duration {
+	if !o.requestTimeoutSet {
+		return nil
+	}
+	d := o.requestTimeout
+	return &d
 }
 
 // WatchOption configures directory watching.
@@ -588,8 +661,14 @@ func WithWatchUser(user string) WatchOption {
 	return func(o *watchOptions) { o.user = &user }
 }
 
+// WithWatchRequestTimeout sets the request timeout for creating the watcher.
+// Passing 0 explicitly disables it (matching the Python SDK); leaving it unset
+// falls back to the client's configured RequestTimeout.
 func WithWatchRequestTimeout(timeout time.Duration) WatchOption {
-	return func(o *watchOptions) { o.requestTimeout = timeout }
+	return func(o *watchOptions) {
+		o.requestTimeout = timeout
+		o.requestTimeoutSet = true
+	}
 }
 
 func WithRecursiveWatch(enabled bool) WatchOption {

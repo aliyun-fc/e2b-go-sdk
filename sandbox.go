@@ -225,7 +225,11 @@ func (c *Client) CreateSandbox(ctx context.Context, opts ...SandboxCreateOption)
 	}
 	sandbox := c.newSandbox(response)
 	if options.mcp != nil {
-		token := newRandomToken()
+		token, err := newRandomToken()
+		if err != nil {
+			c.cleanupCreatedSandbox(response.SandboxID)
+			return nil, err
+		}
 		sandbox.mcpToken = token
 		handle, err := sandbox.Commands.Start(ctx, fmt.Sprintf("mcp-gateway --config %s", shellQuoteJSON(options.mcp)), WithCommandUser("root"), WithCommandEnv("GATEWAY_ACCESS_TOKEN", token), WithCommandTimeout(0))
 		if err != nil {
@@ -629,12 +633,12 @@ func nonNilStringMap(in map[string]string) map[string]string {
 	return in
 }
 
-func newRandomToken() string {
+func newRandomToken() (string, error) {
 	var token [32]byte
 	if _, err := rand.Read(token[:]); err != nil {
-		panic(fmt.Errorf("generate MCP token: %w", err))
+		return "", fmt.Errorf("generate MCP token: %w", err)
 	}
-	return hex.EncodeToString(token[:])
+	return hex.EncodeToString(token[:]), nil
 }
 
 func shellQuoteJSON(v any) string {
