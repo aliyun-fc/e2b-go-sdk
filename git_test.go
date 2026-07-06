@@ -116,6 +116,33 @@ func TestGitRejectsOptionLikeBranchAndExtRemote(t *testing.T) {
 	}
 }
 
+func TestGitRejectsExtRemoteAcrossSurface(t *testing.T) {
+	const ext = "ext::sh -c 'touch /tmp/pwned'"
+	g := &Git{}
+	var invalid *InvalidArgumentError
+	cases := map[string]error{
+		"RemoteAdd": g.RemoteAdd(context.Background(), "/repo", "origin", ext, false),
+		"Push":      g.Push(context.Background(), "/repo", ext, "main", "", "", false),
+		"Pull":      g.Pull(context.Background(), "/repo", ext, "main", "", ""),
+	}
+	for name, err := range cases {
+		if !errors.As(err, &invalid) {
+			t.Fatalf("%s error = %T %v, want InvalidArgumentError", name, err, err)
+		}
+	}
+}
+
+func TestGitRejectsOptionLikeConfigKey(t *testing.T) {
+	g := &Git{}
+	var invalid *InvalidArgumentError
+	if err := g.SetConfig(context.Background(), "--global", "value", "", "/repo"); !errors.As(err, &invalid) {
+		t.Fatalf("SetConfig error = %T %v, want InvalidArgumentError", err, err)
+	}
+	if _, err := g.GetConfig(context.Background(), "--global", "", "/repo"); !errors.As(err, &invalid) {
+		t.Fatalf("GetConfig error = %T %v, want InvalidArgumentError", err, err)
+	}
+}
+
 func TestDangerouslyAuthenticateWritesPlainNetrcLine(t *testing.T) {
 	commands, err := captureGitCommands(t, []gitCommandResponse{{}}, func(g *Git) error {
 		return g.DangerouslyAuthenticate(context.Background(), "me", "pw", "github.com", "")

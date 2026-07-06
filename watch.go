@@ -25,7 +25,7 @@ func (w *WatchHandle) Stop(ctx context.Context, requestTimeout ...time.Duration)
 		map[string]string{"watcherId": w.watcherID},
 		nil,
 		w.user,
-		timeout,
+		optionalTimeout(timeout),
 		nil,
 	))
 }
@@ -43,7 +43,7 @@ func (w *WatchHandle) GetNewEvents(ctx context.Context, requestTimeout ...time.D
 		map[string]string{"watcherId": w.watcherID},
 		&response,
 		w.user,
-		timeout,
+		optionalTimeout(timeout),
 		nil,
 	)
 	if err != nil {

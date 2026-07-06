@@ -35,7 +35,7 @@ type connectStream struct {
 	decoder  *json.Decoder
 }
 
-func (s *Sandbox) connectUnary(ctx context.Context, service, method string, request any, response any, user *string, timeout time.Duration, extraHeaders map[string]string) error {
+func (s *Sandbox) connectUnary(ctx context.Context, service, method string, request any, response any, user *string, timeout *time.Duration, extraHeaders map[string]string) error {
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return err
@@ -48,7 +48,7 @@ func (s *Sandbox) connectUnary(ctx context.Context, service, method string, requ
 	headers["Content-Type"] = "application/json"
 	headers["Connect-Protocol-Version"] = "1"
 
-	ctx, cancel := withTimeout(ctx, s.client.config.requestContextTimeout(timeout))
+	ctx, cancel := withTimeout(ctx, s.client.config.resolveTimeout(timeout))
 	defer cancel()
 
 	target, err := url.JoinPath(s.envdAPIURL, strings.TrimPrefix(path, "/"))

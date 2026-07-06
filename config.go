@@ -232,6 +232,17 @@ func (c Config) requestContextTimeout(override time.Duration) time.Duration {
 	return c.RequestTimeout
 }
 
+// resolveTimeout resolves an optional per-call timeout: nil falls back to the
+// configured RequestTimeout, while a non-nil value is used verbatim — including
+// an explicit 0, which disables the timeout (mirroring Python's
+// request_timeout=0 -> None).
+func (c Config) resolveTimeout(override *time.Duration) time.Duration {
+	if override != nil {
+		return *override
+	}
+	return c.RequestTimeout
+}
+
 func authenticationHeader(envdVersion string, user *string) map[string]string {
 	username := ""
 	if user != nil {

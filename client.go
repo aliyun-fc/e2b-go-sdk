@@ -32,9 +32,13 @@ func NewClient(opts ...Option) (*Client, error) {
 	return &Client{config: cfg, http: cfg.HTTPClient}, nil
 }
 
-// Config returns a copy of the client's configuration.
+// Config returns a copy of the client's configuration. The Headers and
+// SandboxHeaders maps are deep-copied so callers cannot mutate client state.
 func (c *Client) Config() Config {
-	return c.config
+	cfg := c.config
+	cfg.Headers = cloneStringMap(c.config.Headers)
+	cfg.SandboxHeaders = cloneStringMap(c.config.SandboxHeaders)
+	return cfg
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, query url.Values, body any, out any, expected ...int) error {
@@ -132,6 +136,17 @@ func withTimeout(ctx context.Context, timeout time.Duration) (context.Context, c
 		return ctx, func() {}
 	}
 	return context.WithTimeout(ctx, timeout)
+}
+
+// optionalTimeout adapts a duration-valued timeout (where 0 means "unset, fall
+// back to the configured default") to the *time.Duration form used by
+// connectUnary. It preserves the legacy semantics of callers that cannot
+// distinguish an explicit 0 from an absent value.
+func optionalTimeout(timeout time.Duration) *time.Duration {
+	if timeout == 0 {
+		return nil
+	}
+	return &timeout
 }
 
 func jsonRaw(v any) json.RawMessage {

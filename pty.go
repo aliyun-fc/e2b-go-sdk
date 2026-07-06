@@ -24,7 +24,7 @@ func (p *Pty) Kill(ctx context.Context, pid int, requestTimeout ...time.Duration
 		"process": map[string]int{"pid": pid},
 		"signal":  "SIGNAL_SIGKILL",
 	}
-	err := p.sandbox.connectUnary(ctx, "process.Process", "SendSignal", req, nil, nil, timeout, nil)
+	err := p.sandbox.connectUnary(ctx, "process.Process", "SendSignal", req, nil, nil, optionalTimeout(timeout), nil)
 	if err == nil {
 		return true, nil
 	}
@@ -42,7 +42,7 @@ func (p *Pty) SendStdin(ctx context.Context, pid int, data []byte, requestTimeou
 		"process": map[string]int{"pid": pid},
 		"input":   map[string]string{"pty": base64.StdEncoding.EncodeToString(data)},
 	}
-	return p.sandbox.connectUnary(ctx, "process.Process", "SendInput", req, nil, nil, timeout, nil)
+	return p.sandbox.connectUnary(ctx, "process.Process", "SendInput", req, nil, nil, optionalTimeout(timeout), nil)
 }
 
 // Create starts a PTY and returns a command handle.
@@ -112,7 +112,7 @@ func (p *Pty) Resize(ctx context.Context, pid int, size PtySize, requestTimeout 
 			"size": map[string]int{"rows": size.Rows, "cols": size.Cols},
 		},
 	}
-	return p.sandbox.connectUnary(ctx, "process.Process", "Update", req, nil, nil, timeout, nil)
+	return p.sandbox.connectUnary(ctx, "process.Process", "Update", req, nil, nil, optionalTimeout(timeout), nil)
 }
 
 type ptyOptions struct {
