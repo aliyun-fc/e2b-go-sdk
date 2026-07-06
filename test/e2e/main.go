@@ -88,6 +88,7 @@ func run() int {
 	if !runStep("sandbox lifecycle", func() error {
 		return run.createSandbox(mountedVolume)
 	}) {
+		run.killSandbox()
 		return 1
 	}
 	defer run.killSandbox()
@@ -210,16 +211,35 @@ func (r *e2eRun) createSandbox(volume *e2b.Volume) error {
 	}
 	r.sandbox = connected
 
-	page, err := r.client.ListSandboxes(r.ctx, &e2b.SandboxQuery{
-		Metadata: map[string]string{"go_sdk_e2e_id": r.testID},
-	}, 20, "")
-	if err != nil {
-		return err
+	return r.waitForSandboxInMetadataList(sandbox.SandboxID())
+}
+
+func (r *e2eRun) waitForSandboxInMetadataList(sandboxID string) error {
+	timeout := 30 * time.Second
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+
+	for {
+		page, err := r.client.ListSandboxes(r.ctx, &e2b.SandboxQuery{
+			Metadata: map[string]string{"go_sdk_e2e_id": r.testID},
+		}, 20, "")
+		if err != nil {
+			return err
+		}
+		if containsSandbox(page.Items, sandboxID) {
+			return nil
+		}
+
+		select {
+		case <-r.ctx.Done():
+			return r.ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("created sandbox %s not found in ListSandboxes metadata query after %s", sandboxID, timeout)
+		case <-ticker.C:
+		}
 	}
-	if !containsSandbox(page.Items, sandbox.SandboxID()) {
-		return fmt.Errorf("created sandbox %s not found in ListSandboxes metadata query", sandbox.SandboxID())
-	}
-	return nil
 }
 
 func (r *e2eRun) verifyCommands() error {
