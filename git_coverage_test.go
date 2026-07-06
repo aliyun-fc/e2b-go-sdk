@@ -79,7 +79,8 @@ func gcovCaptureStart(t *testing.T, fn func(*Git) error) ([]gcovStartRequest, er
 	sandbox := &Sandbox{client: client, sandboxID: "sbx", envdAPIURL: "https://envd.test", envdVersion: "0.6.4"}
 	sandbox.Commands = newCommands(sandbox)
 	git := newGit(sandbox.Commands)
-	return requests, fn(git)
+	err = fn(git)
+	return requests, err
 }
 
 func gcovAssertInvalidArgument(t *testing.T, name string, err error) {
