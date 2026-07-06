@@ -149,22 +149,13 @@ func optionalTimeout(timeout time.Duration) *time.Duration {
 	return &timeout
 }
 
-func jsonRaw(v any) json.RawMessage {
-	if v == nil {
-		return nil
-	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil
-	}
-	return b
-}
-
 func nextTokenHeader(headers http.Header) string {
 	if token := headers.Get("X-Next-Token"); token != "" {
 		return token
 	}
-	if values := headers["x-next-token"]; len(values) > 0 {
+	// Fallback for headers supplied as non-canonical map literals (e.g. tests or
+	// callers that bypass Header.Set); real net/http responses are canonicalized.
+	if values := headers["x-next-token"]; len(values) > 0 { //nolint:staticcheck // intentional non-canonical lookup
 		return values[0]
 	}
 	return ""

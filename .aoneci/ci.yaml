@@ -1,0 +1,43 @@
+name: CI
+
+triggers:
+  push:
+    branches:
+      - master
+  merge_request:
+    target-branches:
+      - master
+
+envs:
+  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/X11R6/bin:/usr/local/go/bin:/root/go/bin
+  # 部分执行环境需要显式 Go 缓存目录（见 CLAUDE.md）。
+  GOCACHE: /tmp/e2b-go-sdk-gocache
+
+jobs:
+  # 统一格式与静态检查：gofmt 校验 + go vet + golangci-lint。
+  go-sdk-lint:
+    image: reg.docker.alibaba-inc.com/serverless-devs/e2b-runtime-ci:v2
+    steps:
+      - uses: checkout
+      - run: |
+          go version
+          echo ">>> gofmt 格式校验..."
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "以下文件需要 gofmt，请本地运行 'task fmt'：" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+          echo ">>> go vet..."
+          go vet ./...
+          echo ">>> golangci-lint..."
+          go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...
+
+  # 单元测试。
+  go-sdk-ut:
+    image: reg.docker.alibaba-inc.com/serverless-devs/e2b-runtime-ci:v2
+    steps:
+      - uses: checkout
+      - run: |
+          go version
+          go test -count=1 -v ./...
