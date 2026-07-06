@@ -127,6 +127,33 @@ go run ./examples/template
 go run ./examples/template/main.go
 ```
 
+## 维护者 E2E 验证
+
+官方环境 E2E 验收工具位于 `test/e2e`。它会创建真实云端资源，用于验证 SDK 功能完备性，不作为普通用户示例：
+
+```sh
+export E2B_API_KEY="e2b_..."
+go run ./test/e2e
+```
+
+`test/e2e` 默认使用官方域名 `e2b.app` 和默认模板 `base`，会创建真实 sandbox，并覆盖 client、sandbox 生命周期、commands、filesystem、watch、PTY、Git、network、metrics、签名文件 URL 和错误映射。可选的高成本/额外资源验证默认关闭：
+
+```sh
+E2B_E2E_VOLUME=1 go run ./test/e2e
+E2B_E2E_SNAPSHOT=1 go run ./test/e2e
+E2B_E2E_TEMPLATE_BUILD=1 go run ./test/e2e
+E2B_E2E_FULL=1 go run ./test/e2e
+```
+
+如果要覆盖官方 E2E 的地址、模板或超时：
+
+```sh
+export E2B_API_URL="https://api.e2b.app"
+export E2B_DOMAIN="e2b.app"
+export E2B_E2E_TEMPLATE="base"
+export E2B_E2E_TIMEOUT_SECONDS=2700
+```
+
 示例默认使用北京区域：
 
 ```text
@@ -137,8 +164,8 @@ cn-beijing.e2b.fc.aliyuncs.com
 如果你要覆盖示例使用的地址，可以设置：
 
 ```sh
-export E2B_SAMPLE_API_URL="https://api.cn-beijing.e2b.fc.aliyuncs.com"
-export E2B_SAMPLE_DOMAIN="cn-beijing.e2b.fc.aliyuncs.com"
+export E2B_API_URL="https://api.cn-beijing.e2b.fc.aliyuncs.com"
+export E2B_DOMAIN="cn-beijing.e2b.fc.aliyuncs.com"
 export E2B_SAMPLE_TEMPLATE="code-interpreter-v1"
 ```
 
@@ -469,11 +496,11 @@ go run ./examples/template
 
 ### DNS 或连接失败
 
-确认 `E2B_API_URL` / `E2B_DOMAIN` 或示例专用的 `E2B_SAMPLE_API_URL` / `E2B_SAMPLE_DOMAIN` 指向同一个区域。例如北京：
+确认 `E2B_API_URL` / `E2B_DOMAIN` 指向同一个区域。例如北京：
 
 ```sh
-export E2B_SAMPLE_API_URL="https://api.cn-beijing.e2b.fc.aliyuncs.com"
-export E2B_SAMPLE_DOMAIN="cn-beijing.e2b.fc.aliyuncs.com"
+export E2B_API_URL="https://api.cn-beijing.e2b.fc.aliyuncs.com"
+export E2B_DOMAIN="cn-beijing.e2b.fc.aliyuncs.com"
 ```
 
 ### Template 示例会创建资源吗

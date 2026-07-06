@@ -65,7 +65,7 @@ go run ./examples/sandbox/main.go
 go run ./examples/template/main.go
 ```
 
-示例逻辑位于 `examples/internal/sample`，入口文件只是薄 CLI。示例默认使用北京区域，可通过 `E2B_SAMPLE_API_URL`、`E2B_SAMPLE_DOMAIN`、`E2B_SAMPLE_TEMPLATE` 覆盖。
+示例逻辑位于 `examples/internal/sample`，入口文件只是薄 CLI。示例默认使用北京区域，可通过 `E2B_API_URL`、`E2B_DOMAIN`、`E2B_SAMPLE_TEMPLATE` 覆盖。
 
 集成测试默认关闭，避免误创建资源；需要真实验证时显式打开：
 

@@ -18,8 +18,8 @@ func RunSandbox(ctx context.Context) {
 		log.Fatal("set E2B_API_KEY first")
 	}
 
-	apiURL := normalizeAPIURL(env("E2B_SAMPLE_API_URL", defaultAPIURL))
-	domain := env("E2B_SAMPLE_DOMAIN", defaultDomain)
+	apiURL := normalizeAPIURL(env("E2B_API_URL", defaultAPIURL))
+	domain := env("E2B_DOMAIN", defaultDomain)
 	templateName := env("E2B_SAMPLE_TEMPLATE", defaultTemplate)
 	fmt.Printf("using api_url=%s domain=%s template=%s\n", apiURL, domain, templateName)
 

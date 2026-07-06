@@ -13,6 +13,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -125,14 +126,30 @@ func (f *Filesystem) WriteFiles(ctx context.Context, files []WriteEntry, opts ..
 		return nil, &TemplateError{Message: "file metadata requires envd 0.6.2 or later"}
 	}
 
-	useOctet := options.useOctetStream && len(files) == 1
-	if options.gzip && len(files) == 1 {
-		useOctet = true
+	supportsOctet := compareVersion(f.sandbox.envdVersion, "0.5.7") >= 0
+	useOctet := supportsOctet
+	if options.useOctetStreamSet {
+		useOctet = options.useOctetStream && supportsOctet
 	}
-	if useOctet && compareVersion(f.sandbox.envdVersion, "0.5.7") >= 0 {
-		return f.writeOctet(ctx, files[0], options)
+	if options.gzip {
+		useOctet = supportsOctet
+	}
+	if useOctet {
+		return f.writeOctetFiles(ctx, files, options)
 	}
 	return f.writeMultipart(ctx, files, options)
+}
+
+func (f *Filesystem) writeOctetFiles(ctx context.Context, files []WriteEntry, options fileOptions) ([]WriteInfo, error) {
+	results := make([]WriteInfo, 0, len(files))
+	for _, file := range files {
+		written, err := f.writeOctet(ctx, file, options)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, written...)
+	}
+	return results, nil
 }
 
 func (f *Filesystem) writeOctet(ctx context.Context, file WriteEntry, options fileOptions) ([]WriteInfo, error) {
@@ -464,7 +481,7 @@ type entryInfoJSON struct {
 	Name          string            `json:"name"`
 	Type          any               `json:"type"`
 	Path          string            `json:"path"`
-	Size          int64             `json:"size"`
+	Size          flexibleInt64     `json:"size"`
 	Mode          uint32            `json:"mode"`
 	Permissions   string            `json:"permissions"`
 	Owner         string            `json:"owner"`
@@ -486,7 +503,7 @@ func (e entryInfoJSON) toEntryInfo() (EntryInfo, bool) {
 			Path:     e.Path,
 			Metadata: e.Metadata,
 		},
-		Size:          e.Size,
+		Size:          int64(e.Size),
 		Mode:          e.Mode,
 		Permissions:   e.Permissions,
 		Owner:         e.Owner,
@@ -519,6 +536,38 @@ func mapProtoFileType(value any) (FileType, bool) {
 	default:
 		return "", false
 	}
+}
+
+type flexibleInt64 int64
+
+func (n *flexibleInt64) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		*n = 0
+		return nil
+	}
+	if strings.HasPrefix(raw, `"`) {
+		var text string
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		if text == "" {
+			*n = 0
+			return nil
+		}
+		value, err := strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid int64 string %q: %w", text, err)
+		}
+		*n = flexibleInt64(value)
+		return nil
+	}
+	var value int64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*n = flexibleInt64(value)
+	return nil
 }
 
 func validateMetadata(metadata map[string]string) error {
@@ -559,6 +608,7 @@ type fileOptions struct {
 	depth             *int
 	gzip              bool
 	useOctetStream    bool
+	useOctetStreamSet bool
 	metadata          map[string]string
 }
 
@@ -615,9 +665,12 @@ func WithGzip(enabled bool) FileOption {
 	return func(o *fileOptions) { o.gzip = enabled }
 }
 
-// WithOctetStreamUpload uses application/octet-stream for single-file upload when supported.
+// WithOctetStreamUpload controls application/octet-stream upload when supported.
 func WithOctetStreamUpload(enabled bool) FileOption {
-	return func(o *fileOptions) { o.useOctetStream = enabled }
+	return func(o *fileOptions) {
+		o.useOctetStream = enabled
+		o.useOctetStreamSet = true
+	}
 }
 
 // WithFileMetadata attaches user metadata to uploaded files.
