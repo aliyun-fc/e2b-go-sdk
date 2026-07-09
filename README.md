@@ -160,8 +160,6 @@ E2B_VOLUME_E2E=1 \
 go test ./test/e2e -count=1 -v -timeout 90m
 ```
 
-`E2B_SANDBOX_E2E` 和 `E2B_RUNTIME_E2E` 作为旧开关名仍兼容，但新脚本建议使用 `E2B_SANDBOX_LIFECYCLE_E2E` 和 `E2B_SANDBOX_RUNTIME_E2E`，语义更清楚。
-
 部分控制面能力可能按环境开通。`pause/reconnect`、`snapshot`、`volume` 这类可选能力如果返回未开通或服务端 5xx，E2E 会标记为 skip；核心 runtime、template from image 和 sandbox 生命周期仍会失败即报错。
 
 历史脚本入口 `go run ./test/e2e` 仍保留，用于一次性广覆盖验证；新的增量验收建议优先使用上面的 `go test` 分组。

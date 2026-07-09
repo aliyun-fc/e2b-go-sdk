@@ -56,8 +56,6 @@ E2B_TEMPLATE_E2E=1 \
 go test ./test/e2e -count=1 -v -timeout 90m
 ```
 
-`E2B_SANDBOX_E2E` 和 `E2B_RUNTIME_E2E` 作为旧开关名仍兼容，但新脚本建议使用更明确的 `E2B_SANDBOX_LIFECYCLE_E2E` 和 `E2B_SANDBOX_RUNTIME_E2E`。
-
 部分服务端能力在不同环境中可能尚未开通或不稳定：
 
 - `pause/reconnect` 和 `snapshot` 属于 advanced 可选能力；如果控制面返回 404/500/501/503 或 not supported，测试会标记为 skip。
