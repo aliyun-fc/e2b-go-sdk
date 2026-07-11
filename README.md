@@ -129,30 +129,40 @@ go run ./examples/template/main.go
 
 ## 维护者 E2E 验证
 
-官方环境 E2E 验收工具位于 `test/e2e`。它会创建真实云端资源，用于验证 SDK 功能完备性，不作为普通用户示例：
+真实 E2E 位于 `test/e2e`，会创建云端 sandbox、template 或 volume。默认全部跳过，必须显式打开对应开关。能力清单和覆盖矩阵见 [docs/SDK_CAPABILITIES_AND_E2E.md](docs/SDK_CAPABILITIES_AND_E2E.md)。
+
+先配置真实环境：
 
 ```sh
 export E2B_API_KEY="e2b_..."
-go run ./test/e2e
+export E2B_API_URL="https://api.cn-beijing.e2b.fc.aliyuncs.com"
+export E2B_DOMAIN="cn-beijing.e2b.fc.aliyuncs.com"
 ```
 
-`test/e2e` 默认使用官方域名 `e2b.app` 和默认模板 `base`，会创建真实 sandbox，并覆盖 client、sandbox 生命周期、commands、filesystem、watch、PTY、Git、network、metrics、签名文件 URL 和错误映射。可选的高成本/额外资源验证默认关闭：
+推荐按能力分组运行：
 
 ```sh
-E2B_E2E_VOLUME=1 go run ./test/e2e
-E2B_E2E_SNAPSHOT=1 go run ./test/e2e
-E2B_E2E_TEMPLATE_BUILD=1 go run ./test/e2e
-E2B_E2E_FULL=1 go run ./test/e2e
+E2B_SANDBOX_LIFECYCLE_E2E=1 go test ./test/e2e -run TestSandboxLifecycle -count=1 -v
+E2B_SANDBOX_RUNTIME_E2E=1 go test ./test/e2e -run TestSandboxRuntimeModules -count=1 -v
+E2B_SANDBOX_ADVANCED_E2E=1 go test ./test/e2e -run TestSandboxAdvancedFeatures -count=1 -v
+E2B_TEMPLATE_E2E=1 go test ./test/e2e -run TestTemplateFromImageBuildQueryDeleteAndSpawn -count=1 -v
+E2B_VOLUME_E2E=1 go test ./test/e2e -run TestVolumeLifecycleContentAndMount -count=1 -v
 ```
 
-如果要覆盖官方 E2E 的地址、模板或超时：
+完整运行：
 
 ```sh
-export E2B_API_URL="https://api.e2b.app"
-export E2B_DOMAIN="e2b.app"
-export E2B_E2E_TEMPLATE="base"
-export E2B_E2E_TIMEOUT_SECONDS=2700
+E2B_SANDBOX_LIFECYCLE_E2E=1 \
+E2B_SANDBOX_RUNTIME_E2E=1 \
+E2B_SANDBOX_ADVANCED_E2E=1 \
+E2B_TEMPLATE_E2E=1 \
+E2B_VOLUME_E2E=1 \
+go test ./test/e2e -count=1 -v -timeout 90m
 ```
+
+部分控制面能力可能按环境开通。`pause/reconnect`、`snapshot`、`volume` 这类可选能力如果返回未开通或服务端 5xx，E2E 会标记为 skip；核心 runtime、template from image 和 sandbox 生命周期仍会失败即报错。
+
+历史脚本入口 `go run ./test/e2e` 仍保留，用于一次性广覆盖验证；新的增量验收建议优先使用上面的 `go test` 分组。
 
 示例默认使用北京区域：
 
