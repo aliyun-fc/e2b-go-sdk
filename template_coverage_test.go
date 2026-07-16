@@ -109,6 +109,7 @@ func TestTemplateBuildOptionsFromDefaultsAndOverrides(t *testing.T) {
 		WithTemplateMemoryMB(4096),
 		WithTemplateSkipCache(true),
 		WithTemplatePollPeriod(time.Millisecond),
+		WithTemplateHeaders(map[string]string{"X-Build-Mode": "micro"}),
 	)
 	// Assert overrides.
 	if got.cpuCount != 4 || got.memoryMB != 4096 || !got.skipCache {
@@ -119,6 +120,58 @@ func TestTemplateBuildOptionsFromDefaultsAndOverrides(t *testing.T) {
 	}
 	if strings.Join(got.tags, ",") != "a,b" {
 		t.Fatalf("tags = %#v", got.tags)
+	}
+	if got.headers["X-Build-Mode"] != "micro" {
+		t.Fatalf("headers = %#v", got.headers)
+	}
+}
+
+func TestTemplateBuildHeadersAreScopedToBuild(t *testing.T) {
+	const headerName = "X-E2B-Template-Build-Mode"
+	var statusCalls int
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.URL.Path == "/v3/templates":
+			if got := r.Header.Get(headerName); got != "micro" {
+				t.Fatalf("request build header = %q", got)
+			}
+			return jsonResponse(http.StatusAccepted, `{"templateID":"tpl","buildID":"bld"}`, nil), nil
+		case r.URL.Path == "/v2/templates/tpl/builds/bld":
+			if got := r.Header.Get(headerName); got != "micro" {
+				t.Fatalf("trigger build header = %q", got)
+			}
+			return jsonResponse(http.StatusNoContent, ``, nil), nil
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			statusCalls++
+			if statusCalls == 1 {
+				if got := r.Header.Get(headerName); got != "micro" {
+					t.Fatalf("build polling header = %q", got)
+				}
+			} else if got := r.Header.Get(headerName); got != "" {
+				t.Fatalf("header leaked to unrelated request: %q", got)
+			}
+			return jsonResponse(http.StatusOK, `{"status":"ready","logEntries":[]}`, nil), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
+			return nil, nil
+		}
+	})
+
+	client := mustTestClient(t, transport)
+	headers := map[string]string{headerName: "micro"}
+	_, err := client.BuildTemplate(
+		context.Background(),
+		NewTemplate().FromImage("ubuntu:24.04"),
+		"scoped",
+		WithTemplateHeaders(headers),
+		WithTemplatePollPeriod(time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("BuildTemplate: %v", err)
+	}
+	headers[headerName] = "mutated"
+	if _, err := client.GetBuildStatus(context.Background(), "tpl", "bld", 0); err != nil {
+		t.Fatalf("GetBuildStatus: %v", err)
 	}
 }
 

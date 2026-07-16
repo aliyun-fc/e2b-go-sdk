@@ -42,7 +42,15 @@ func (c *Client) Config() Config {
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, query url.Values, body any, out any, expected ...int) error {
-	status, payload, err := c.do(ctx, method, c.config.apiURL(), path, query, body, c.config.Headers, expected...)
+	return c.doJSONWithHeaders(ctx, method, path, query, body, out, nil, expected...)
+}
+
+func (c *Client) doJSONWithHeaders(ctx context.Context, method, path string, query url.Values, body any, out any, headers map[string]string, expected ...int) error {
+	requestHeaders := cloneHeaders(c.config.Headers)
+	for key, value := range headers {
+		requestHeaders[key] = value
+	}
+	status, payload, err := c.do(ctx, method, c.config.apiURL(), path, query, body, requestHeaders, expected...)
 	if err != nil {
 		return err
 	}

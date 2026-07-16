@@ -215,6 +215,7 @@ type templateBuildOptions struct {
 	memoryMB   int
 	skipCache  bool
 	pollPeriod time.Duration
+	headers    map[string]string
 }
 
 // TemplateBuildOption configures template builds.
@@ -240,6 +241,13 @@ func WithTemplatePollPeriod(period time.Duration) TemplateBuildOption {
 	return func(o *templateBuildOptions) { o.pollPeriod = period }
 }
 
+// WithTemplateHeaders adds control-plane headers only to requests made for
+// this template build. The headers are copied so callers can safely reuse or
+// clear the input map after calling BuildTemplate.
+func WithTemplateHeaders(headers map[string]string) TemplateBuildOption {
+	return func(o *templateBuildOptions) { o.headers = cloneHeaders(headers) }
+}
+
 func templateBuildOptionsFrom(opts ...TemplateBuildOption) templateBuildOptions {
 	options := templateBuildOptions{cpuCount: 2, memoryMB: 1024, pollPeriod: 200 * time.Millisecond}
 	for _, opt := range opts {
@@ -259,7 +267,7 @@ func (c *Client) BuildTemplate(ctx context.Context, template *Template, name str
 	options := templateBuildOptionsFrom(opts...)
 	offset := 0
 	for {
-		status, err := c.GetBuildStatus(ctx, info.TemplateID, info.BuildID, offset)
+		status, err := c.getBuildStatus(ctx, info.TemplateID, info.BuildID, offset, options.headers)
 		if err != nil {
 			return BuildInfo{}, err
 		}
@@ -300,7 +308,7 @@ func (c *Client) BuildTemplateInBackground(ctx context.Context, template *Templa
 		Public     bool     `json:"public"`
 		Tags       []string `json:"tags"`
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/v3/templates", nil, req, &response, http.StatusAccepted); err != nil {
+	if err := c.doJSONWithHeaders(ctx, http.MethodPost, "/v3/templates", nil, req, &response, options.headers, http.StatusAccepted); err != nil {
 		return BuildInfo{}, err
 	}
 	if template != nil {
@@ -310,11 +318,11 @@ func (c *Client) BuildTemplateInBackground(ctx context.Context, template *Templa
 		if options.skipCache {
 			body.Force = true
 		}
-		if err := c.prepareTemplateFiles(ctx, response.TemplateID, &body); err != nil {
+		if err := c.prepareTemplateFilesWithHeaders(ctx, response.TemplateID, &body, options.headers); err != nil {
 			return BuildInfo{}, &BuildError{Message: c.withTemplateCleanupError(response.TemplateID, err).Error()}
 		}
 		path := "/v2/templates/" + url.PathEscape(response.TemplateID) + "/builds/" + url.PathEscape(response.BuildID)
-		if err := c.doJSON(ctx, http.MethodPost, path, nil, body, nil); err != nil {
+		if err := c.doJSONWithHeaders(ctx, http.MethodPost, path, nil, body, nil, options.headers); err != nil {
 			return BuildInfo{}, &BuildError{Message: c.withTemplateCleanupError(response.TemplateID, err).Error()}
 		}
 	}
@@ -360,6 +368,10 @@ type templateBuildFileUpload struct {
 }
 
 func (c *Client) prepareTemplateFiles(ctx context.Context, templateID string, template *Template) error {
+	return c.prepareTemplateFilesWithHeaders(ctx, templateID, template, nil)
+}
+
+func (c *Client) prepareTemplateFilesWithHeaders(ctx context.Context, templateID string, template *Template, headers map[string]string) error {
 	if template == nil {
 		return nil
 	}
@@ -382,7 +394,7 @@ func (c *Client) prepareTemplateFiles(ctx context.Context, templateID string, te
 		}
 		step.FilesHash = hash
 
-		upload, err := c.getTemplateFileUpload(ctx, templateID, hash)
+		upload, err := c.getTemplateFileUpload(ctx, templateID, hash, headers)
 		if err != nil {
 			return err
 		}
@@ -403,10 +415,10 @@ func (c *Client) prepareTemplateFiles(ctx context.Context, templateID string, te
 	return nil
 }
 
-func (c *Client) getTemplateFileUpload(ctx context.Context, templateID, hash string) (templateBuildFileUpload, error) {
+func (c *Client) getTemplateFileUpload(ctx context.Context, templateID, hash string, headers map[string]string) (templateBuildFileUpload, error) {
 	var response templateBuildFileUpload
 	path := "/templates/" + url.PathEscape(templateID) + "/files/" + url.PathEscape(hash)
-	if err := c.doJSON(ctx, http.MethodGet, path, nil, nil, &response, http.StatusOK, http.StatusCreated); err != nil {
+	if err := c.doJSONWithHeaders(ctx, http.MethodGet, path, nil, nil, &response, headers, http.StatusOK, http.StatusCreated); err != nil {
 		return templateBuildFileUpload{}, err
 	}
 	return response, nil
@@ -616,10 +628,14 @@ func ensureTemplateCopyWithinContext(path, contextPath string) error {
 
 // GetBuildStatus returns template build status.
 func (c *Client) GetBuildStatus(ctx context.Context, templateID, buildID string, logsOffset int) (TemplateBuildStatusResponse, error) {
+	return c.getBuildStatus(ctx, templateID, buildID, logsOffset, nil)
+}
+
+func (c *Client) getBuildStatus(ctx context.Context, templateID, buildID string, logsOffset int, headers map[string]string) (TemplateBuildStatusResponse, error) {
 	query := url.Values{"logsOffset": []string{strconv.Itoa(logsOffset)}}
 	var response TemplateBuildStatusResponse
 	path := "/templates/" + url.PathEscape(templateID) + "/builds/" + url.PathEscape(buildID) + "/status"
-	if err := c.doJSON(ctx, http.MethodGet, path, query, nil, &response); err != nil {
+	if err := c.doJSONWithHeaders(ctx, http.MethodGet, path, query, nil, &response, headers); err != nil {
 		return TemplateBuildStatusResponse{}, &BuildError{Message: err.Error()}
 	}
 	return response, nil

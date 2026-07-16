@@ -523,6 +523,11 @@ func (s *Sandbox) EnvdDirectURL() string { return s.envdDirectURL }
 // TrafficAccessToken returns the traffic proxy token, when present.
 func (s *Sandbox) TrafficAccessToken() string { return s.trafficAccessToken }
 
+// SandboxAccessToken returns the access token required by secured sandbox
+// services, when present. Treat the returned value as a secret: do not log,
+// serialize, or expose it outside the component making the sandbox request.
+func (s *Sandbox) SandboxAccessToken() string { return s.envdAccessToken }
+
 // MCPToken returns the generated MCP gateway token, when MCP is enabled.
 func (s *Sandbox) MCPToken() string { return s.mcpToken }
 
