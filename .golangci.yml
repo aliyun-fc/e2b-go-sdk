@@ -1,6 +1,6 @@
 # golangci-lint 配置（兼容 v1.64.x）。
 # 目标：在 golangci-lint 默认 linter 之上补充格式化与常见问题检查，
-# 与 Taskfile.yml、.githooks/pre-commit、.aoneci/ci.yaml 使用同一套规则。
+# 与 Taskfile.yml、.githooks/pre-commit、.github/workflows/ci.yaml 使用同一套规则。
 
 run:
   timeout: 5m
