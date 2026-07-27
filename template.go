@@ -215,7 +215,7 @@ type templateBuildOptions struct {
 	memoryMB   int
 	skipCache  bool
 	pollPeriod time.Duration
-	headers    map[string]string
+	apiHeaders map[string]string
 }
 
 // TemplateBuildOption configures template builds.
@@ -241,11 +241,21 @@ func WithTemplatePollPeriod(period time.Duration) TemplateBuildOption {
 	return func(o *templateBuildOptions) { o.pollPeriod = period }
 }
 
-// WithTemplateHeaders adds control-plane headers only to requests made for
-// this template build. The headers are copied so callers can safely reuse or
-// clear the input map after calling BuildTemplate.
+// WithTemplateAPIHeaders adds control-plane API headers only to requests made
+// for this template build. It mirrors the upstream SDK's per-call api_headers
+// option. The headers are copied when the option is created so callers can
+// safely reuse or clear the input map.
+func WithTemplateAPIHeaders(headers map[string]string) TemplateBuildOption {
+	copied := cloneHeaders(headers)
+	return func(o *templateBuildOptions) { o.apiHeaders = cloneHeaders(copied) }
+}
+
+// WithTemplateHeaders is an alias for WithTemplateAPIHeaders.
+//
+// Deprecated: use WithTemplateAPIHeaders to match the upstream E2B SDK's
+// api_headers naming.
 func WithTemplateHeaders(headers map[string]string) TemplateBuildOption {
-	return func(o *templateBuildOptions) { o.headers = cloneHeaders(headers) }
+	return WithTemplateAPIHeaders(headers)
 }
 
 func templateBuildOptionsFrom(opts ...TemplateBuildOption) templateBuildOptions {
@@ -267,7 +277,7 @@ func (c *Client) BuildTemplate(ctx context.Context, template *Template, name str
 	options := templateBuildOptionsFrom(opts...)
 	offset := 0
 	for {
-		status, err := c.getBuildStatus(ctx, info.TemplateID, info.BuildID, offset, options.headers)
+		status, err := c.getBuildStatus(ctx, info.TemplateID, info.BuildID, offset, options.apiHeaders)
 		if err != nil {
 			return BuildInfo{}, err
 		}
@@ -308,7 +318,7 @@ func (c *Client) BuildTemplateInBackground(ctx context.Context, template *Templa
 		Public     bool     `json:"public"`
 		Tags       []string `json:"tags"`
 	}
-	if err := c.doJSONWithHeaders(ctx, http.MethodPost, "/v3/templates", nil, req, &response, options.headers, http.StatusAccepted); err != nil {
+	if err := c.doJSONWithHeaders(ctx, http.MethodPost, "/v3/templates", nil, req, &response, options.apiHeaders, http.StatusAccepted); err != nil {
 		return BuildInfo{}, err
 	}
 	if template != nil {
@@ -318,12 +328,12 @@ func (c *Client) BuildTemplateInBackground(ctx context.Context, template *Templa
 		if options.skipCache {
 			body.Force = true
 		}
-		if err := c.prepareTemplateFilesWithHeaders(ctx, response.TemplateID, &body, options.headers); err != nil {
-			return BuildInfo{}, &BuildError{Message: c.withTemplateCleanupError(response.TemplateID, err).Error()}
+		if err := c.prepareTemplateFilesWithHeaders(ctx, response.TemplateID, &body, options.apiHeaders); err != nil {
+			return BuildInfo{}, &BuildError{Message: c.withTemplateCleanupError(response.TemplateID, err, options.apiHeaders).Error()}
 		}
 		path := "/v2/templates/" + url.PathEscape(response.TemplateID) + "/builds/" + url.PathEscape(response.BuildID)
-		if err := c.doJSONWithHeaders(ctx, http.MethodPost, path, nil, body, nil, options.headers); err != nil {
-			return BuildInfo{}, &BuildError{Message: c.withTemplateCleanupError(response.TemplateID, err).Error()}
+		if err := c.doJSONWithHeaders(ctx, http.MethodPost, path, nil, body, nil, options.apiHeaders); err != nil {
+			return BuildInfo{}, &BuildError{Message: c.withTemplateCleanupError(response.TemplateID, err, options.apiHeaders).Error()}
 		}
 	}
 	return BuildInfo{
@@ -335,21 +345,25 @@ func (c *Client) BuildTemplateInBackground(ctx context.Context, template *Templa
 	}, nil
 }
 
-func (c *Client) withTemplateCleanupError(templateID string, cause error) error {
-	if err := c.deleteTemplateAfterBuildStartFailure(templateID); err != nil {
+func (c *Client) withTemplateCleanupError(templateID string, cause error, headers map[string]string) error {
+	if err := c.deleteTemplateAfterBuildStartFailureWithHeaders(templateID, headers); err != nil {
 		return fmt.Errorf("%w; additionally failed to delete template %s after build start failure: %v", cause, templateID, err)
 	}
 	return cause
 }
 
 func (c *Client) deleteTemplateAfterBuildStartFailure(templateID string) error {
+	return c.deleteTemplateAfterBuildStartFailureWithHeaders(templateID, nil)
+}
+
+func (c *Client) deleteTemplateAfterBuildStartFailureWithHeaders(templateID string, headers map[string]string) error {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		deleted, err := c.DeleteTemplate(ctx, templateID)
+		deleted, err := c.deleteTemplateWithHeaders(ctx, templateID, headers)
 		cancel()
 		if err == nil {
 			if deleted {
@@ -631,6 +645,15 @@ func (c *Client) GetBuildStatus(ctx context.Context, templateID, buildID string,
 	return c.getBuildStatus(ctx, templateID, buildID, logsOffset, nil)
 }
 
+// GetBuildStatusWithOptions returns template build status using per-request
+// template options. Use WithTemplateAPIHeaders when continuing a background
+// build that requires build-scoped control-plane headers. Other template build
+// options are ignored.
+func (c *Client) GetBuildStatusWithOptions(ctx context.Context, templateID, buildID string, logsOffset int, opts ...TemplateBuildOption) (TemplateBuildStatusResponse, error) {
+	options := templateBuildOptionsFrom(opts...)
+	return c.getBuildStatus(ctx, templateID, buildID, logsOffset, options.apiHeaders)
+}
+
 func (c *Client) getBuildStatus(ctx context.Context, templateID, buildID string, logsOffset int, headers map[string]string) (TemplateBuildStatusResponse, error) {
 	query := url.Values{"logsOffset": []string{strconv.Itoa(logsOffset)}}
 	var response TemplateBuildStatusResponse
@@ -681,8 +704,12 @@ func (c *Client) GetTemplate(ctx context.Context, templateID string, limit int, 
 
 // DeleteTemplate deletes a template. It returns false when the template is not found.
 func (c *Client) DeleteTemplate(ctx context.Context, templateID string) (bool, error) {
+	return c.deleteTemplateWithHeaders(ctx, templateID, nil)
+}
+
+func (c *Client) deleteTemplateWithHeaders(ctx context.Context, templateID string, headers map[string]string) (bool, error) {
 	path := "/templates/" + url.PathEscape(templateID)
-	status, _, err := c.do(ctx, http.MethodDelete, c.config.apiURL(), path, nil, nil, c.config.Headers, http.StatusOK, http.StatusNoContent, http.StatusNotFound)
+	status, _, err := c.do(ctx, http.MethodDelete, c.config.apiURL(), path, nil, nil, mergeHeaders(c.config.Headers, headers), http.StatusOK, http.StatusNoContent, http.StatusNotFound)
 	if err != nil {
 		return false, &TemplateError{Message: err.Error()}
 	}

@@ -524,8 +524,12 @@ func (s *Sandbox) EnvdDirectURL() string { return s.envdDirectURL }
 func (s *Sandbox) TrafficAccessToken() string { return s.trafficAccessToken }
 
 // SandboxAccessToken returns the access token required by secured sandbox
-// services, when present. Treat the returned value as a secret: do not log,
-// serialize, or expose it outside the component making the sandbox request.
+// services, when present.
+//
+// This is an FC-specific integration extension for trusted proxies such as
+// CSM, not part of the upstream E2B SDK's public API. Treat the returned value
+// as a secret: use it only as X-Access-Token for sandbox requests, and do not
+// log, serialize, persist, or expose it to untrusted components.
 func (s *Sandbox) SandboxAccessToken() string { return s.envdAccessToken }
 
 // MCPToken returns the generated MCP gateway token, when MCP is enabled.
@@ -611,10 +615,7 @@ func (s *Sandbox) fileURL(path, operation string, user *string, signatureExpirat
 }
 
 func (s *Sandbox) sandboxHeaders(user *string) map[string]string {
-	headers := cloneHeaders(s.client.config.SandboxHeaders)
-	for k, v := range authenticationHeader(s.envdVersion, user) {
-		headers[k] = v
-	}
+	headers := mergeHeaders(s.client.config.SandboxHeaders, authenticationHeader(s.envdVersion, user))
 	if s.envdAccessToken != "" {
 		headers["X-Access-Token"] = s.envdAccessToken
 	}
