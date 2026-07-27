@@ -782,6 +782,9 @@ func TestSandboxAccessors(t *testing.T) {
 	if s.TrafficAccessToken() != "traffic-token" {
 		t.Fatalf("TrafficAccessToken = %q", s.TrafficAccessToken())
 	}
+	if s.SandboxAccessToken() != "envd-token" {
+		t.Fatalf("SandboxAccessToken = %q", s.SandboxAccessToken())
+	}
 	if got := s.GetHost(8080); got != "8080-sbx_test.example.com" {
 		t.Fatalf("GetHost = %q", got)
 	}

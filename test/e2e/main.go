@@ -256,19 +256,22 @@ func (r *e2eRun) verifyCommands() error {
 		return fmt.Errorf("command env stdout=%q, want %q", result.Stdout, r.testID)
 	}
 
-	var streamed strings.Builder
-	handle, err := r.sandbox.Commands.Start(r.ctx, "for i in 1 2 3; do echo tick-$i; sleep 0.1; done")
+	var streamedStdout strings.Builder
+	var streamedStderr strings.Builder
+	handle, err := r.sandbox.Commands.Start(r.ctx, "for i in 1 2 3; do echo out-$i; echo err-$i >&2; sleep 0.1; done")
 	if err != nil {
 		return err
 	}
 	result, err = handle.Wait(r.ctx, e2b.WithWaitStdout(func(chunk string) {
-		streamed.WriteString(chunk)
+		streamedStdout.WriteString(chunk)
+	}), e2b.WithWaitStderr(func(chunk string) {
+		streamedStderr.WriteString(chunk)
 	}))
 	if err != nil {
 		return err
 	}
-	if result.ExitCode != 0 || !strings.Contains(streamed.String(), "tick-3") {
-		return fmt.Errorf("stream result=%+v streamed=%q", result, streamed.String())
+	if result.ExitCode != 0 || !strings.Contains(streamedStdout.String(), "out-3") || !strings.Contains(streamedStderr.String(), "err-3") {
+		return fmt.Errorf("stream result=%+v stdout=%q stderr=%q", result, streamedStdout.String(), streamedStderr.String())
 	}
 
 	stdin, err := r.sandbox.Commands.Start(r.ctx, "cat", e2b.WithCommandStdin(true), e2b.WithCommandTimeout(20*time.Second))
@@ -557,7 +560,11 @@ func (r *e2eRun) verifyWatchOnce(includeEntry bool) error {
 	if err != nil {
 		return err
 	}
+	stopped := false
 	defer func() {
+		if stopped {
+			return
+		}
 		if err := watcher.Stop(context.Background()); err != nil {
 			fmt.Printf("watcher cleanup err=%v\n", err)
 		}
@@ -586,7 +593,11 @@ func (r *e2eRun) verifyWatchOnce(includeEntry bool) error {
 			return fmt.Errorf("watcher events did not include entry info: %+v", events)
 		}
 	}
-	return watcher.Stop(r.ctx)
+	if err := watcher.Stop(r.ctx); err != nil {
+		return err
+	}
+	stopped = true
+	return nil
 }
 
 func (r *e2eRun) verifyPTY() error {
@@ -727,12 +738,19 @@ func (r *e2eRun) verifyGit() error {
 }
 
 func (r *e2eRun) verifyNetworkAndMetrics() error {
-	allow := true
-	if err := r.sandbox.UpdateNetwork(r.ctx, e2b.SandboxNetworkUpdate{
-		AllowInternetAccess: &allow,
-		AllowOut:            []string{e2b.AllTraffic},
-	}); err != nil {
-		return err
+	// SessionNetworkPolicy (UpdateNetwork) can be skipped on control planes that
+	// do not support it yet, e.g. the Singapore region E2E job. Metrics and the
+	// egress probe below still run.
+	if enabled("E2B_E2E_SKIP_NETWORK_POLICY") {
+		fmt.Println("skip session network policy: E2B_E2E_SKIP_NETWORK_POLICY set")
+	} else {
+		allow := true
+		if err := r.sandbox.UpdateNetwork(r.ctx, e2b.SandboxNetworkUpdate{
+			AllowInternetAccess: &allow,
+			AllowOut:            []string{e2b.AllTraffic},
+		}); err != nil {
+			return err
+		}
 	}
 	if envdAtLeast(r.sandbox.EnvdVersion(), "0.1.5") {
 		metrics, err := r.sandbox.GetMetrics(r.ctx, nil, nil)

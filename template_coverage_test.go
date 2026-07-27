@@ -102,13 +102,18 @@ func TestTemplateBuildOptionsFromDefaultsAndOverrides(t *testing.T) {
 		t.Fatalf("defaults skipCache/tags = %#v", defaults)
 	}
 
-	// Act: full overrides.
+	// Act: full overrides. Header options snapshot the input map immediately,
+	// matching the upstream SDK's per-call connection configuration.
+	headers := map[string]string{"x-build-mode": "micro"}
+	headerOption := WithTemplateAPIHeaders(headers)
+	headers["x-build-mode"] = "mutated"
 	got := templateBuildOptionsFrom(
 		WithTemplateTags("a", "b"),
 		WithTemplateCPUCount(4),
 		WithTemplateMemoryMB(4096),
 		WithTemplateSkipCache(true),
 		WithTemplatePollPeriod(time.Millisecond),
+		headerOption,
 	)
 	// Assert overrides.
 	if got.cpuCount != 4 || got.memoryMB != 4096 || !got.skipCache {
@@ -119,6 +124,154 @@ func TestTemplateBuildOptionsFromDefaultsAndOverrides(t *testing.T) {
 	}
 	if strings.Join(got.tags, ",") != "a,b" {
 		t.Fatalf("tags = %#v", got.tags)
+	}
+	if got.apiHeaders["x-build-mode"] != "micro" {
+		t.Fatalf("headers = %#v", got.apiHeaders)
+	}
+	alias := templateBuildOptionsFrom(WithTemplateHeaders(map[string]string{"X-Alias": "ok"}))
+	if alias.apiHeaders["X-Alias"] != "ok" {
+		t.Fatalf("deprecated header alias = %#v", alias.apiHeaders)
+	}
+}
+
+// TestTemplateBuildHeadersAreScopedToBuild verifies that headers passed via
+// WithTemplateAPIHeaders are applied to every request of that build (create,
+// trigger, poll) but do not leak into later unrelated calls, which keep the
+// client's global header value.
+func TestTemplateBuildHeadersAreScopedToBuild(t *testing.T) {
+	const headerName = "X-E2B-Template-Build-Mode"
+	var statusCalls int
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.URL.Path == "/v3/templates":
+			if got := r.Header.Get(headerName); got != "micro" {
+				t.Fatalf("request build header = %q", got)
+			}
+			return jsonResponse(http.StatusAccepted, `{"templateID":"tpl","buildID":"bld"}`, nil), nil
+		case r.URL.Path == "/v2/templates/tpl/builds/bld":
+			if got := r.Header.Get(headerName); got != "micro" {
+				t.Fatalf("trigger build header = %q", got)
+			}
+			return jsonResponse(http.StatusNoContent, ``, nil), nil
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			statusCalls++
+			if statusCalls == 1 {
+				if got := r.Header.Get(headerName); got != "micro" {
+					t.Fatalf("build polling header = %q", got)
+				}
+			} else if got := r.Header.Get(headerName); got != "global" {
+				t.Fatalf("build header leaked to unrelated request: %q", got)
+			}
+			return jsonResponse(http.StatusOK, `{"status":"ready","logEntries":[]}`, nil), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
+			return nil, nil
+		}
+	})
+
+	client, err := NewClient(
+		WithAPIKey("e2b_0123"),
+		WithAPIURL("https://api.test"),
+		WithHeader(strings.ToLower(headerName), "global"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	headers := map[string]string{headerName: "micro"}
+	_, err = client.BuildTemplate(
+		context.Background(),
+		NewTemplate().FromImage("ubuntu:24.04"),
+		"scoped",
+		WithTemplateAPIHeaders(headers),
+		WithTemplatePollPeriod(time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("BuildTemplate: %v", err)
+	}
+	headers[headerName] = "mutated"
+	if _, err := client.GetBuildStatus(context.Background(), "tpl", "bld", 0); err != nil {
+		t.Fatalf("GetBuildStatus: %v", err)
+	}
+}
+
+// TestGetBuildStatusWithOptionsUsesScopedHeaders verifies that
+// GetBuildStatusWithOptions sends the headers from WithTemplateAPIHeaders and
+// snapshots them when the option is created, so later mutation of the caller's
+// map does not affect the request.
+func TestGetBuildStatusWithOptionsUsesScopedHeaders(t *testing.T) {
+	const headerName = "X-E2B-Template-Build-Mode"
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet || r.URL.Path != "/templates/tpl/builds/bld/status" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
+		}
+		if got := r.Header.Get(headerName); got != "micro" {
+			t.Fatalf("status build header = %q", got)
+		}
+		return jsonResponse(http.StatusOK, `{"status":"building","logEntries":[]}`, nil), nil
+	})
+
+	client := mustTestClient(t, transport)
+	headers := map[string]string{headerName: "micro"}
+	option := WithTemplateAPIHeaders(headers)
+	headers[headerName] = "mutated"
+	if _, err := client.GetBuildStatusWithOptions(context.Background(), "tpl", "bld", 0, option); err != nil {
+		t.Fatalf("GetBuildStatusWithOptions: %v", err)
+	}
+}
+
+// TestTemplateBuildHeadersCoverCopyControlPlaneOnly verifies that build-scoped
+// headers are attached to the COPY control-plane requests (file-upload
+// negotiation) but not to the presigned file upload itself.
+func TestTemplateBuildHeadersCoverCopyControlPlaneOnly(t *testing.T) {
+	const headerName = "X-E2B-Template-Build-Mode"
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "copy.txt"), []byte("copy\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	tcovChdir(t, dir)
+
+	var uploadSeen bool
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v3/templates":
+			if got := r.Header.Get(headerName); got != "micro" {
+				t.Fatalf("request build header = %q", got)
+			}
+			return jsonResponse(http.StatusAccepted, `{"templateID":"tpl","buildID":"bld"}`, nil), nil
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/templates/tpl/files/"):
+			if got := r.Header.Get(headerName); got != "micro" {
+				t.Fatalf("file lookup header = %q", got)
+			}
+			return jsonResponse(http.StatusOK, `{"present":false,"url":"https://upload.test/context"}`, nil), nil
+		case r.Method == http.MethodPut && r.URL.Host == "upload.test":
+			uploadSeen = true
+			if got := r.Header.Get(headerName); got != "" {
+				t.Fatalf("control-plane header leaked to upload URL: %q", got)
+			}
+			return jsonResponse(http.StatusOK, ``, nil), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/templates/tpl/builds/bld":
+			if got := r.Header.Get(headerName); got != "micro" {
+				t.Fatalf("trigger build header = %q", got)
+			}
+			return jsonResponse(http.StatusNoContent, ``, nil), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
+			return nil, nil
+		}
+	})
+
+	client := mustTestClient(t, transport)
+	if _, err := client.BuildTemplateInBackground(
+		context.Background(),
+		NewTemplate().FromImage("ubuntu:24.04").Copy("copy.txt", "/tmp/copy.txt"),
+		"copy",
+		WithTemplateAPIHeaders(map[string]string{headerName: "micro"}),
+	); err != nil {
+		t.Fatalf("BuildTemplateInBackground: %v", err)
+	}
+	if !uploadSeen {
+		t.Fatal("expected presigned upload")
 	}
 }
 
@@ -389,6 +542,7 @@ func TestBuildTemplatePrepareFilesErrorTriggersCleanup(t *testing.T) {
 }
 
 func TestBuildTemplateTriggerErrorTriggersCleanup(t *testing.T) {
+	const headerName = "X-E2B-Template-Build-Mode"
 	var deleted bool
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch {
@@ -398,6 +552,9 @@ func TestBuildTemplateTriggerErrorTriggersCleanup(t *testing.T) {
 			return jsonResponse(http.StatusBadRequest, `{"code":400,"message":"steps are not supported"}`, nil), nil
 		case r.Method == http.MethodDelete && r.URL.Path == "/templates/tpl":
 			deleted = true
+			if got := r.Header.Get(headerName); got != "micro" {
+				t.Fatalf("cleanup build header = %q", got)
+			}
 			return jsonResponse(http.StatusOK, ``, nil), nil
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
@@ -406,7 +563,12 @@ func TestBuildTemplateTriggerErrorTriggersCleanup(t *testing.T) {
 	})
 
 	client := mustTestClient(t, transport)
-	_, err := client.BuildTemplate(context.Background(), NewTemplate().FromImage("ubuntu:24.04"), "trigger-fail")
+	_, err := client.BuildTemplate(
+		context.Background(),
+		NewTemplate().FromImage("ubuntu:24.04"),
+		"trigger-fail",
+		WithTemplateAPIHeaders(map[string]string{headerName: "micro"}),
+	)
 	var buildErr *BuildError
 	if !errors.As(err, &buildErr) {
 		t.Fatalf("error = %T %v", err, err)
