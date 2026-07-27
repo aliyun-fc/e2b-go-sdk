@@ -76,14 +76,14 @@ func NewConfig(opts ...Option) Config {
 	}
 
 	cfg.Headers = cloneHeaders(cfg.Headers)
-	cfg.Headers["User-Agent"] = buildUserAgent(cfg.Integration)
+	setHeader(cfg.Headers, "User-Agent", buildUserAgent(cfg.Integration))
 	for k, v := range defaultAPIHeaders() {
-		if _, ok := cfg.Headers[k]; !ok {
+		if !hasHeader(cfg.Headers, k) {
 			cfg.Headers[k] = v
 		}
 	}
 	cfg.SandboxHeaders = cloneHeaders(cfg.SandboxHeaders)
-	cfg.SandboxHeaders["User-Agent"] = cfg.Headers["User-Agent"]
+	setHeader(cfg.SandboxHeaders, "User-Agent", cfg.Headers["User-Agent"])
 
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = http.DefaultClient
@@ -137,7 +137,7 @@ func WithHeader(key, value string) Option {
 		if c.Headers == nil {
 			c.Headers = map[string]string{}
 		}
-		c.Headers[key] = value
+		setHeader(c.Headers, key, value)
 	}
 }
 
@@ -148,7 +148,7 @@ func WithHeaders(headers map[string]string) Option {
 			c.Headers = map[string]string{}
 		}
 		for k, v := range headers {
-			c.Headers[k] = v
+			setHeader(c.Headers, k, v)
 		}
 	}
 }
@@ -159,7 +159,7 @@ func WithSandboxHeader(key, value string) Option {
 		if c.SandboxHeaders == nil {
 			c.SandboxHeaders = map[string]string{}
 		}
-		c.SandboxHeaders[key] = value
+		setHeader(c.SandboxHeaders, key, value)
 	}
 }
 
@@ -282,6 +282,35 @@ func cloneHeaders(headers map[string]string) map[string]string {
 		result[k] = v
 	}
 	return result
+}
+
+func mergeHeaders(base, overrides map[string]string) map[string]string {
+	result := map[string]string{}
+	for k, v := range base {
+		result[http.CanonicalHeaderKey(k)] = v
+	}
+	for k, v := range overrides {
+		result[http.CanonicalHeaderKey(k)] = v
+	}
+	return result
+}
+
+func hasHeader(headers map[string]string, key string) bool {
+	for existing := range headers {
+		if strings.EqualFold(existing, key) {
+			return true
+		}
+	}
+	return false
+}
+
+func setHeader(headers map[string]string, key, value string) {
+	for existing := range headers {
+		if existing != key && strings.EqualFold(existing, key) {
+			delete(headers, existing)
+		}
+	}
+	headers[key] = value
 }
 
 func getenvDefault(key, fallback string) string {
