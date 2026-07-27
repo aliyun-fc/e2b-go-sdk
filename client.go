@@ -42,7 +42,12 @@ func (c *Client) Config() Config {
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, query url.Values, body any, out any, expected ...int) error {
-	status, payload, err := c.do(ctx, method, c.config.apiURL(), path, query, body, c.config.Headers, expected...)
+	return c.doJSONWithHeaders(ctx, method, path, query, body, out, nil, expected...)
+}
+
+func (c *Client) doJSONWithHeaders(ctx context.Context, method, path string, query url.Values, body any, out any, headers map[string]string, expected ...int) error {
+	requestHeaders := mergeHeaders(c.config.Headers, headers)
+	status, payload, err := c.do(ctx, method, c.config.apiURL(), path, query, body, requestHeaders, expected...)
 	if err != nil {
 		return err
 	}
@@ -86,7 +91,7 @@ func (c *Client) doFull(ctx context.Context, method, baseURL, path string, query
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	for k, v := range headers {
+	for k, v := range mergeHeaders(nil, headers) {
 		req.Header.Set(k, v)
 	}
 	if baseURL == c.config.apiURL() {

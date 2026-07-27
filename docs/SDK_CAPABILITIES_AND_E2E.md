@@ -88,6 +88,7 @@ go test ./test/e2e -count=1 -v -timeout 90m
 | metrics | `Sandbox.GetMetrics`、`Client.GetSandboxMetrics` | 已覆盖 | `TestSandboxAdvancedFeatures` |
 | snapshot | `Sandbox.CreateSnapshot`、`Sandbox.ListSnapshots`、`Client.DeleteSnapshot` | 已覆盖 | `TestSandboxAdvancedFeatures` |
 | host / MCP URL helpers | `GetHost`、`GetMCPURL` | 已覆盖 | `GetHost` 在 `test/e2e/main.go` 打印；暂无专门断言 |
+| FC 受信集成读取 envd token | `SandboxAccessToken` | 已覆盖 | FC 专用扩展，非上游公开 API；敏感凭证不在 E2E 输出或断言 |
 | signed file URL | `DownloadURL`、`UploadURL` | 已覆盖 | `TestSandboxAdvancedFeatures` |
 | MCP sandbox | `WithMCP`、`MCPToken`、`GetMCPURL` | 已覆盖创建参数和 token helper | 暂无真实 MCP gateway E2E |
 
@@ -149,8 +150,8 @@ go test ./test/e2e -count=1 -v -timeout 90m
 | builder from image | `NewTemplate().FromImage`、`FromDockerImage` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
 | builder from base template | `FromBaseTemplate` | 已覆盖 | `test/e2e/main.go` 的 full/template build 路径覆盖；暂无独立 Go test |
 | build steps | `RunCmd`、`SetEnv`、`Workdir`、`User`、`Copy` | 已覆盖 | `TestTemplateIntegrationBuildCopy` 覆盖 COPY；`test/e2e/main.go` full 路径覆盖 RUN/COPY/ENV |
-| build template | `BuildTemplate`、`BuildTemplateInBackground` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
-| build status | `GetBuildStatus` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
+| build template | `BuildTemplate`、`BuildTemplateInBackground`、`WithTemplateAPIHeaders` | 已覆盖，包括 Header 作用域和 COPY 上传隔离 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
+| build status | `GetBuildStatus`、`GetBuildStatusWithOptions` | 已覆盖，包括后台构建 Header 延续 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
 | list / get / exists | `ListTemplates`、`GetTemplate`、`TemplateExists` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
 | delete | `DeleteTemplate` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
 | tags | `WithTemplateTags`、`GetTemplateTags`、`AssignTemplateTags`、`RemoveTemplateTags` | 已覆盖 | `WithTemplateTags` / `GetTemplateTags` 已覆盖；assign/remove 暂无真实 E2E |

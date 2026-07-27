@@ -1,7 +1,10 @@
 package e2b
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -96,5 +99,73 @@ func TestConfigDefaultsAndURLs(t *testing.T) {
 	customTimeout := NewConfig(WithRequestTimeout(2 * time.Second))
 	if customTimeout.RequestTimeout != 2*time.Second {
 		t.Fatalf("request timeout = %s", customTimeout.RequestTimeout)
+	}
+}
+
+func TestConfigCustomHeaderOverridesCaseInsensitiveDefault(t *testing.T) {
+	cfg := NewConfig(WithHeader("lang", "custom"))
+
+	if got := cfg.Headers["lang"]; got != "custom" {
+		t.Fatalf("lang header = %q, want custom", got)
+	}
+	count := 0
+	for key := range cfg.Headers {
+		if strings.EqualFold(key, "lang") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("case-insensitive Lang header count = %d, headers = %#v", count, cfg.Headers)
+	}
+}
+
+func TestConfigHeadersPreservePublicKeyRepresentation(t *testing.T) {
+	cfg := NewConfig(
+		WithHeader("Lang", "custom"),
+		WithHeader("x-foo", "control"),
+		WithSandboxHeader("x-sandbox-foo", "sandbox"),
+	)
+
+	if got := cfg.Headers["Lang"]; got != "custom" {
+		t.Fatalf("Lang header = %q, want custom", got)
+	}
+	if _, ok := cfg.Headers["lang"]; ok {
+		t.Fatalf("default lang key was added alongside custom Lang: %#v", cfg.Headers)
+	}
+	if got := cfg.Headers["x-foo"]; got != "control" {
+		t.Fatalf("x-foo header = %q, want control", got)
+	}
+	if got := cfg.SandboxHeaders["x-sandbox-foo"]; got != "sandbox" {
+		t.Fatalf("x-sandbox-foo header = %q, want sandbox", got)
+	}
+
+	defaults := NewConfig()
+	if got := defaults.Headers["lang"]; got != "go" {
+		t.Fatalf("default lang header = %q, want go", got)
+	}
+}
+
+func TestClientRequestCanonicalizesHeadersWithoutChangingPublicConfig(t *testing.T) {
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if values := r.Header.Values("Lang"); len(values) != 1 || values[0] != "custom" {
+			t.Fatalf("request Lang headers = %#v, want [custom]", values)
+		}
+		return jsonResponse(http.StatusOK, ``, nil), nil
+	})
+	client, err := NewClient(
+		WithAPIKey("e2b_0123"),
+		WithAPIURL("https://api.test"),
+		WithHeader("lang", "custom"),
+		WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	if err := client.doJSON(context.Background(), http.MethodGet, "/probe", nil, nil, nil); err != nil {
+		t.Fatalf("doJSON: %v", err)
+	}
+	if got := client.Config().Headers["lang"]; got != "custom" {
+		t.Fatalf("public config lang header = %q, want custom", got)
 	}
 }

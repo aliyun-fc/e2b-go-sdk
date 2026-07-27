@@ -208,6 +208,8 @@ if err != nil {
 fmt.Println(info.SandboxID, info.TemplateID, info.State)
 ```
 
+`SandboxAccessToken()` 是供 CSM 等受信代理使用的 FC 专用扩展，不属于上游 E2B SDK 的公开 API。返回值是敏感信息，只应直接用于 sandbox 请求的 `X-Access-Token`，不得记录、序列化、持久化或向非受信组件暴露。
+
 列出当前 sandbox：
 
 ```go
@@ -409,12 +411,42 @@ build, err := client.BuildTemplate(
 	e2b.WithTemplateMemoryMB(2048),
 	e2b.WithTemplateSkipCache(false),
 	e2b.WithTemplatePollPeriod(5*time.Second),
+	e2b.WithTemplateAPIHeaders(map[string]string{
+		"X-E2B-Template-Build-Mode": "micro",
+	}),
 )
 if err != nil {
 	return err
 }
 fmt.Println("template_id:", build.TemplateID)
 fmt.Println("build_id:", build.BuildID)
+```
+
+`WithTemplateAPIHeaders` 对应上游 Python SDK 的 `api_headers` / JS SDK 的 `apiHeaders`，仅应用于本次模板构建的控制面请求，不会污染客户端的全局 Header，也不会发送到预签名文件上传 URL。使用后台构建时，状态查询需要显式传入相同选项：
+
+```go
+headers := map[string]string{"X-E2B-Template-Build-Mode": "micro"}
+build, err := client.BuildTemplateInBackground(
+	ctx,
+	e2b.NewTemplate().FromImage(fromImage),
+	templateName,
+	e2b.WithTemplateAPIHeaders(headers),
+)
+if err != nil {
+	return err
+}
+
+status, err := client.GetBuildStatusWithOptions(
+	ctx,
+	build.TemplateID,
+	build.BuildID,
+	0,
+	e2b.WithTemplateAPIHeaders(headers),
+)
+if err != nil {
+	return err
+}
+fmt.Println("build status:", status.Status)
 ```
 
 用构建好的模板创建 sandbox：
