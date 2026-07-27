@@ -69,6 +69,8 @@ jobs:
       E2B_DOMAIN: "ap-southeast-1.e2b.fc.aliyuncs.com"
       E2B_E2E_TEMPLATE: "code-interpreter-v1"
       E2B_E2E_TIMEOUT_SECONDS: "900"
+      # 新加坡控制面暂不支持 session network policy，先跳过该 case
+      E2B_E2E_SKIP_NETWORK_POLICY: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

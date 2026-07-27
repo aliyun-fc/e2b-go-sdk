@@ -738,12 +738,19 @@ func (r *e2eRun) verifyGit() error {
 }
 
 func (r *e2eRun) verifyNetworkAndMetrics() error {
-	allow := true
-	if err := r.sandbox.UpdateNetwork(r.ctx, e2b.SandboxNetworkUpdate{
-		AllowInternetAccess: &allow,
-		AllowOut:            []string{e2b.AllTraffic},
-	}); err != nil {
-		return err
+	// SessionNetworkPolicy (UpdateNetwork) can be skipped on control planes that
+	// do not support it yet, e.g. the Singapore region E2E job. Metrics and the
+	// egress probe below still run.
+	if enabled("E2B_E2E_SKIP_NETWORK_POLICY") {
+		fmt.Println("skip session network policy: E2B_E2E_SKIP_NETWORK_POLICY set")
+	} else {
+		allow := true
+		if err := r.sandbox.UpdateNetwork(r.ctx, e2b.SandboxNetworkUpdate{
+			AllowInternetAccess: &allow,
+			AllowOut:            []string{e2b.AllTraffic},
+		}); err != nil {
+			return err
+		}
 	}
 	if envdAtLeast(r.sandbox.EnvdVersion(), "0.1.5") {
 		metrics, err := r.sandbox.GetMetrics(r.ctx, nil, nil)
