@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const defaultTemplateIntegrationImage = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest"
+const defaultTemplateIntegrationImage = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.39"
 
 func TestTemplateIntegrationBuildCRUD(t *testing.T) {
 	if !envEnabled("E2B_TEMPLATE_INTEGRATION") {

@@ -400,7 +400,7 @@ SDK 会在认证 clone 成功后把 `origin` 恢复为不包含凭据的 URL，�
 从镜像构建模板：
 
 ```go
-fromImage := "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest"
+fromImage := "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.39"
 templateName := "my-go-template"
 
 build, err := client.BuildTemplate(

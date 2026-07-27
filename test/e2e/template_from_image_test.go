@@ -11,7 +11,7 @@ import (
 
 const (
 	templateE2EFlag         = "E2B_TEMPLATE_E2E"
-	defaultTemplateE2EImage = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest"
+	defaultTemplateE2EImage = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.39"
 )
 
 func TestTemplateFromImageBuildQueryDeleteAndSpawn(t *testing.T) {
