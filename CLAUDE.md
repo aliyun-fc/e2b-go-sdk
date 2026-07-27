@@ -55,7 +55,7 @@ git config core.hooksPath .githooks
 
 CI 定义在 `.github/workflows/ci.yaml`（push/pull_request 到 `master` 触发），
 `go-sdk-lint` 与 `go-sdk-ut` 两个 job 分别对应上面的 lint 与 test，
-`go-sdk-e2e-beijing` 跑北京真实环境 E2E（`go run ./test/e2e`，需 `E2B_API_KEY_BEIJING` secret）；
+`go-sdk-e2e-singapore` 跑新加坡真实环境 E2E（`go run ./test/e2e`，需 `E2B_API_KEY_SINGAPORE` secret）；
 `go-sdk-ut` 强制库包语句覆盖率 >= `MIN_COVERAGE`（默认 90%，examples 薄 CLI 不计入）。
 lint 规则集中在 `.golangci.yml`，三处（Taskfile、CI、hook）共用同一版本。
 
