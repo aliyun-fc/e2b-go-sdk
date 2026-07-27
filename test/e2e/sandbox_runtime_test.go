@@ -14,6 +14,9 @@ const (
 	legacySandboxRuntimeE2EFlag = "E2B_RUNTIME_E2E"
 )
 
+// TestSandboxRuntimeModules exercises the in-sandbox runtime modules
+// (filesystem, commands, etc.) against a real control plane. It is skipped
+// unless E2B_SANDBOX_RUNTIME_E2E (or the legacy E2B_RUNTIME_E2E) is set.
 func TestSandboxRuntimeModules(t *testing.T) {
 	if !enabledAny(sandboxRuntimeE2EFlag, legacySandboxRuntimeE2EFlag) {
 		t.Skip("set E2B_SANDBOX_RUNTIME_E2E=1 to run real sandbox runtime module e2e tests")

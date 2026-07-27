@@ -13,6 +13,9 @@ const (
 	legacySandboxLifecycleE2EFlag = "E2B_SANDBOX_E2E"
 )
 
+// TestSandboxLifecycle exercises the full sandbox lifecycle (create, query,
+// timeout, stop) against a real control plane. It is skipped unless
+// E2B_SANDBOX_LIFECYCLE_E2E (or the legacy E2B_SANDBOX_E2E) is set.
 func TestSandboxLifecycle(t *testing.T) {
 	if !enabledAny(sandboxLifecycleE2EFlag, legacySandboxLifecycleE2EFlag) {
 		t.Skip("set E2B_SANDBOX_LIFECYCLE_E2E=1 to run the real sandbox lifecycle e2e test")

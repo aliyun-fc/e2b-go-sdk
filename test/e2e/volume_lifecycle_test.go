@@ -11,6 +11,9 @@ import (
 
 const volumeE2EFlag = "E2B_VOLUME_E2E"
 
+// TestVolumeLifecycleContentAndMount exercises the volume lifecycle, content
+// operations, and mounting into a sandbox against a real control plane. It is
+// skipped unless E2B_VOLUME_E2E is set.
 func TestVolumeLifecycleContentAndMount(t *testing.T) {
 	if !enabled(volumeE2EFlag) {
 		t.Skip("set E2B_VOLUME_E2E=1 to run the real volume lifecycle and mount e2e test")

@@ -11,6 +11,8 @@ import (
 
 const sandboxAdvancedE2EFlag = "E2B_SANDBOX_ADVANCED_E2E"
 
+// TestSandboxAdvancedFeatures exercises advanced sandbox capabilities against a
+// real control plane. It is skipped unless E2B_SANDBOX_ADVANCED_E2E is set.
 func TestSandboxAdvancedFeatures(t *testing.T) {
 	if !enabled(sandboxAdvancedE2EFlag) {
 		t.Skip("set E2B_SANDBOX_ADVANCED_E2E=1 to run real sandbox advanced e2e tests")

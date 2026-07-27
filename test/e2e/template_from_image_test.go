@@ -14,6 +14,9 @@ const (
 	defaultTemplateE2EImage = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.39"
 )
 
+// TestTemplateFromImageBuildQueryDeleteAndSpawn builds a template from an image,
+// queries and deletes it, then spawns a sandbox from it, against a real control
+// plane. It is skipped unless E2B_TEMPLATE_E2E is set.
 func TestTemplateFromImageBuildQueryDeleteAndSpawn(t *testing.T) {
 	if !enabled(templateE2EFlag) {
 		t.Skip("set E2B_TEMPLATE_E2E=1 to run the real template from-image e2e test")
@@ -174,6 +177,8 @@ func TestTemplateFromImageBuildQueryDeleteAndSpawn(t *testing.T) {
 	})
 }
 
+// containsTemplateBuild reports whether items contains a build with the given
+// buildID.
 func containsTemplateBuild(items []e2b.TemplateBuild, buildID string) bool {
 	for _, item := range items {
 		if item.BuildID == buildID {

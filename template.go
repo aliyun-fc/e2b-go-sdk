@@ -345,6 +345,9 @@ func (c *Client) BuildTemplateInBackground(ctx context.Context, template *Templa
 	}, nil
 }
 
+// withTemplateCleanupError deletes the template created for a failed build start
+// and returns cause. If cleanup also fails, it wraps cause together with the
+// cleanup error so both are surfaced.
 func (c *Client) withTemplateCleanupError(templateID string, cause error, headers map[string]string) error {
 	if err := c.deleteTemplateAfterBuildStartFailureWithHeaders(templateID, headers); err != nil {
 		return fmt.Errorf("%w; additionally failed to delete template %s after build start failure: %v", cause, templateID, err)
@@ -356,6 +359,10 @@ func (c *Client) deleteTemplateAfterBuildStartFailure(templateID string) error {
 	return c.deleteTemplateAfterBuildStartFailureWithHeaders(templateID, nil)
 }
 
+// deleteTemplateAfterBuildStartFailureWithHeaders deletes templateID with up to
+// three attempts and a linear backoff, using its own 30s timeout per attempt so
+// cleanup does not depend on the caller's context. It returns the last error if
+// every attempt fails.
 func (c *Client) deleteTemplateAfterBuildStartFailureWithHeaders(templateID string, headers map[string]string) error {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
@@ -385,6 +392,9 @@ func (c *Client) prepareTemplateFiles(ctx context.Context, templateID string, te
 	return c.prepareTemplateFilesWithHeaders(ctx, templateID, template, nil)
 }
 
+// prepareTemplateFilesWithHeaders uploads the context files referenced by the
+// template's COPY steps. For each COPY step it computes the files hash, asks the
+// control plane whether the upload is needed, and uploads a tarball when it is.
 func (c *Client) prepareTemplateFilesWithHeaders(ctx context.Context, templateID string, template *Template, headers map[string]string) error {
 	if template == nil {
 		return nil
@@ -429,6 +439,9 @@ func (c *Client) prepareTemplateFilesWithHeaders(ctx context.Context, templateID
 	return nil
 }
 
+// getTemplateFileUpload queries whether the files identified by hash are already
+// present for the build, returning an upload URL to PUT the tarball to when they
+// are not.
 func (c *Client) getTemplateFileUpload(ctx context.Context, templateID, hash string, headers map[string]string) (templateBuildFileUpload, error) {
 	var response templateBuildFileUpload
 	path := "/templates/" + url.PathEscape(templateID) + "/files/" + url.PathEscape(hash)
@@ -654,6 +667,8 @@ func (c *Client) GetBuildStatusWithOptions(ctx context.Context, templateID, buil
 	return c.getBuildStatus(ctx, templateID, buildID, logsOffset, options.apiHeaders)
 }
 
+// getBuildStatus fetches the build status starting at logsOffset, wrapping any
+// transport error in a BuildError.
 func (c *Client) getBuildStatus(ctx context.Context, templateID, buildID string, logsOffset int, headers map[string]string) (TemplateBuildStatusResponse, error) {
 	query := url.Values{"logsOffset": []string{strconv.Itoa(logsOffset)}}
 	var response TemplateBuildStatusResponse
@@ -707,6 +722,8 @@ func (c *Client) DeleteTemplate(ctx context.Context, templateID string) (bool, e
 	return c.deleteTemplateWithHeaders(ctx, templateID, nil)
 }
 
+// deleteTemplateWithHeaders deletes templateID and reports whether it existed;
+// it returns false (and no error) when the control plane responds 404.
 func (c *Client) deleteTemplateWithHeaders(ctx context.Context, templateID string, headers map[string]string) (bool, error) {
 	path := "/templates/" + url.PathEscape(templateID)
 	status, _, err := c.do(ctx, http.MethodDelete, c.config.apiURL(), path, nil, nil, mergeHeaders(c.config.Headers, headers), http.StatusOK, http.StatusNoContent, http.StatusNotFound)

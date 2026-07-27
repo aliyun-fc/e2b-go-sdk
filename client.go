@@ -45,6 +45,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, query url.Valu
 	return c.doJSONWithHeaders(ctx, method, path, query, body, out, nil, expected...)
 }
 
+// doJSONWithHeaders is doJSON with per-request headers merged over the client's
+// default Headers. On success it JSON-decodes the response body into out when
+// out is non-nil and the payload is non-empty.
 func (c *Client) doJSONWithHeaders(ctx context.Context, method, path string, query url.Values, body any, out any, headers map[string]string, expected ...int) error {
 	requestHeaders := mergeHeaders(c.config.Headers, headers)
 	status, payload, err := c.do(ctx, method, c.config.apiURL(), path, query, body, requestHeaders, expected...)

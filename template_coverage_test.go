@@ -134,6 +134,10 @@ func TestTemplateBuildOptionsFromDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+// TestTemplateBuildHeadersAreScopedToBuild verifies that headers passed via
+// WithTemplateAPIHeaders are applied to every request of that build (create,
+// trigger, poll) but do not leak into later unrelated calls, which keep the
+// client's global header value.
 func TestTemplateBuildHeadersAreScopedToBuild(t *testing.T) {
 	const headerName = "X-E2B-Template-Build-Mode"
 	var statusCalls int
@@ -191,6 +195,10 @@ func TestTemplateBuildHeadersAreScopedToBuild(t *testing.T) {
 	}
 }
 
+// TestGetBuildStatusWithOptionsUsesScopedHeaders verifies that
+// GetBuildStatusWithOptions sends the headers from WithTemplateAPIHeaders and
+// snapshots them when the option is created, so later mutation of the caller's
+// map does not affect the request.
 func TestGetBuildStatusWithOptionsUsesScopedHeaders(t *testing.T) {
 	const headerName = "X-E2B-Template-Build-Mode"
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -212,6 +220,9 @@ func TestGetBuildStatusWithOptionsUsesScopedHeaders(t *testing.T) {
 	}
 }
 
+// TestTemplateBuildHeadersCoverCopyControlPlaneOnly verifies that build-scoped
+// headers are attached to the COPY control-plane requests (file-upload
+// negotiation) but not to the presigned file upload itself.
 func TestTemplateBuildHeadersCoverCopyControlPlaneOnly(t *testing.T) {
 	const headerName = "X-E2B-Template-Build-Mode"
 	dir := t.TempDir()

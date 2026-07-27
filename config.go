@@ -284,6 +284,9 @@ func cloneHeaders(headers map[string]string) map[string]string {
 	return result
 }
 
+// mergeHeaders returns a new map with base headers overlaid by overrides, with
+// every key canonicalized via http.CanonicalHeaderKey so overrides replace the
+// matching base entry regardless of the original casing.
 func mergeHeaders(base, overrides map[string]string) map[string]string {
 	result := map[string]string{}
 	for k, v := range base {
@@ -295,6 +298,7 @@ func mergeHeaders(base, overrides map[string]string) map[string]string {
 	return result
 }
 
+// hasHeader reports whether headers contains key, matching case-insensitively.
 func hasHeader(headers map[string]string, key string) bool {
 	for existing := range headers {
 		if strings.EqualFold(existing, key) {
@@ -304,6 +308,8 @@ func hasHeader(headers map[string]string, key string) bool {
 	return false
 }
 
+// setHeader sets key to value in headers, first removing any existing entry that
+// differs only by casing so the result keeps a single canonical key.
 func setHeader(headers map[string]string, key, value string) {
 	for existing := range headers {
 		if existing != key && strings.EqualFold(existing, key) {

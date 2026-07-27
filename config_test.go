@@ -102,6 +102,9 @@ func TestConfigDefaultsAndURLs(t *testing.T) {
 	}
 }
 
+// TestConfigCustomHeaderOverridesCaseInsensitiveDefault verifies that a custom
+// header replaces a default header that differs only by casing, leaving a single
+// entry for that name.
 func TestConfigCustomHeaderOverridesCaseInsensitiveDefault(t *testing.T) {
 	cfg := NewConfig(WithHeader("lang", "custom"))
 
@@ -119,6 +122,9 @@ func TestConfigCustomHeaderOverridesCaseInsensitiveDefault(t *testing.T) {
 	}
 }
 
+// TestConfigHeadersPreservePublicKeyRepresentation verifies that custom header
+// keys keep the exact casing the caller supplied (no duplicate default key is
+// added) while the default headers remain unchanged.
 func TestConfigHeadersPreservePublicKeyRepresentation(t *testing.T) {
 	cfg := NewConfig(
 		WithHeader("Lang", "custom"),
@@ -145,6 +151,9 @@ func TestConfigHeadersPreservePublicKeyRepresentation(t *testing.T) {
 	}
 }
 
+// TestClientRequestCanonicalizesHeadersWithoutChangingPublicConfig verifies that
+// outgoing requests send canonicalized header names while the public Config keeps
+// the caller's original key representation.
 func TestClientRequestCanonicalizesHeadersWithoutChangingPublicConfig(t *testing.T) {
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if values := r.Header.Values("Lang"); len(values) != 1 || values[0] != "custom" {
