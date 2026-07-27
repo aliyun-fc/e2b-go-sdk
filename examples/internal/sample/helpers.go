@@ -8,10 +8,10 @@ import (
 )
 
 const (
-	defaultAPIURL            = "https://api.cn-beijing.e2b.fc.aliyuncs.com"
-	defaultDomain            = "cn-beijing.e2b.fc.aliyuncs.com"
+	defaultAPIURL            = "https://api.ap-southeast-1.e2b.fc.aliyuncs.com"
+	defaultDomain            = "ap-southeast-1.e2b.fc.aliyuncs.com"
 	defaultTemplate          = "code-interpreter-v1"
-	defaultTemplateFromImage = "fc-e2b-registry.cn-beijing.cr.aliyuncs.com/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest"
+	defaultTemplateFromImage = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest"
 )
 
 func section(name string) {

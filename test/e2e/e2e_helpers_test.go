@@ -32,8 +32,8 @@ func envDurationAny(keys []string, fallback time.Duration) time.Duration {
 func newSandboxE2EClient(apiKey, integration string, requestTimeout time.Duration) (*e2b.Client, error) {
 	return e2b.NewClient(
 		e2b.WithAPIKey(apiKey),
-		e2b.WithAPIURL(env("E2B_API_URL", "https://api.cn-beijing.e2b.fc.aliyuncs.com")),
-		e2b.WithDomain(env("E2B_DOMAIN", "cn-beijing.e2b.fc.aliyuncs.com")),
+		e2b.WithAPIURL(env("E2B_API_URL", "https://api.ap-southeast-1.e2b.fc.aliyuncs.com")),
+		e2b.WithDomain(env("E2B_DOMAIN", "ap-southeast-1.e2b.fc.aliyuncs.com")),
 		e2b.WithIntegration(integration),
 		e2b.WithRequestTimeout(requestTimeout),
 	)

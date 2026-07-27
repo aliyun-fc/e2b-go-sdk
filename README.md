@@ -30,8 +30,8 @@ export E2B_API_KEY="e2b_..."
 中国区用户通常还需要指定控制面地址和 sandbox 域名：
 
 ```sh
-export E2B_API_URL="https://api.cn-beijing.e2b.fc.aliyuncs.com"
-export E2B_DOMAIN="cn-beijing.e2b.fc.aliyuncs.com"
+export E2B_API_URL="https://api.ap-southeast-1.e2b.fc.aliyuncs.com"
+export E2B_DOMAIN="ap-southeast-1.e2b.fc.aliyuncs.com"
 ```
 
 ## 5 分钟跑通
@@ -57,8 +57,8 @@ func main() {
 
 	client, err := e2b.NewClient(
 		e2b.WithAPIKey(os.Getenv("E2B_API_KEY")),
-		e2b.WithAPIURL("https://api.cn-beijing.e2b.fc.aliyuncs.com"),
-		e2b.WithDomain("cn-beijing.e2b.fc.aliyuncs.com"),
+		e2b.WithAPIURL("https://api.ap-southeast-1.e2b.fc.aliyuncs.com"),
+		e2b.WithDomain("ap-southeast-1.e2b.fc.aliyuncs.com"),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -135,8 +135,8 @@ go run ./examples/template/main.go
 
 ```sh
 export E2B_API_KEY="e2b_..."
-export E2B_API_URL="https://api.cn-beijing.e2b.fc.aliyuncs.com"
-export E2B_DOMAIN="cn-beijing.e2b.fc.aliyuncs.com"
+export E2B_API_URL="https://api.ap-southeast-1.e2b.fc.aliyuncs.com"
+export E2B_DOMAIN="ap-southeast-1.e2b.fc.aliyuncs.com"
 ```
 
 推荐按能力分组运行：
@@ -167,15 +167,15 @@ go test ./test/e2e -count=1 -v -timeout 90m
 示例默认使用北京区域：
 
 ```text
-https://api.cn-beijing.e2b.fc.aliyuncs.com
-cn-beijing.e2b.fc.aliyuncs.com
+https://api.ap-southeast-1.e2b.fc.aliyuncs.com
+ap-southeast-1.e2b.fc.aliyuncs.com
 ```
 
 如果你要覆盖示例使用的地址，可以设置：
 
 ```sh
-export E2B_API_URL="https://api.cn-beijing.e2b.fc.aliyuncs.com"
-export E2B_DOMAIN="cn-beijing.e2b.fc.aliyuncs.com"
+export E2B_API_URL="https://api.ap-southeast-1.e2b.fc.aliyuncs.com"
+export E2B_DOMAIN="ap-southeast-1.e2b.fc.aliyuncs.com"
 export E2B_SAMPLE_TEMPLATE="code-interpreter-v1"
 ```
 
@@ -400,7 +400,7 @@ SDK 会在认证 clone 成功后把 `origin` 恢复为不包含凭据的 URL，�
 从镜像构建模板：
 
 ```go
-fromImage := "fc-e2b-registry.cn-beijing.cr.aliyuncs.com/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest"
+fromImage := "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest"
 templateName := "my-go-template"
 
 build, err := client.BuildTemplate(
@@ -503,8 +503,8 @@ SDK 默认读取这些环境变量：
 ```go
 client, err := e2b.NewClient(
 	e2b.WithAPIKey(os.Getenv("E2B_API_KEY")),
-	e2b.WithAPIURL("https://api.cn-beijing.e2b.fc.aliyuncs.com"),
-	e2b.WithDomain("cn-beijing.e2b.fc.aliyuncs.com"),
+	e2b.WithAPIURL("https://api.ap-southeast-1.e2b.fc.aliyuncs.com"),
+	e2b.WithDomain("ap-southeast-1.e2b.fc.aliyuncs.com"),
 	e2b.WithRequestTimeout(120*time.Second),
 )
 ```
@@ -541,8 +541,8 @@ go run ./examples/template
 确认 `E2B_API_URL` / `E2B_DOMAIN` 指向同一个区域。例如北京：
 
 ```sh
-export E2B_API_URL="https://api.cn-beijing.e2b.fc.aliyuncs.com"
-export E2B_DOMAIN="cn-beijing.e2b.fc.aliyuncs.com"
+export E2B_API_URL="https://api.ap-southeast-1.e2b.fc.aliyuncs.com"
+export E2B_DOMAIN="ap-southeast-1.e2b.fc.aliyuncs.com"
 ```
 
 ### Template 示例会创建资源吗

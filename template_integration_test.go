@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const defaultTemplateIntegrationImage = "fc-e2b-registry.cn-beijing.cr.aliyuncs.com/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest"
+const defaultTemplateIntegrationImage = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest"
 
 func TestTemplateIntegrationBuildCRUD(t *testing.T) {
 	if !envEnabled("E2B_TEMPLATE_INTEGRATION") {
@@ -26,8 +26,8 @@ func TestTemplateIntegrationBuildCRUD(t *testing.T) {
 
 	client, err := NewClient(
 		WithAPIKey(apiKey),
-		WithAPIURL(envString("E2B_API_URL", "https://api.cn-beijing.e2b.fc.aliyuncs.com")),
-		WithDomain(envString("E2B_DOMAIN", "cn-beijing.e2b.fc.aliyuncs.com")),
+		WithAPIURL(envString("E2B_API_URL", "https://api.ap-southeast-1.e2b.fc.aliyuncs.com")),
+		WithDomain(envString("E2B_DOMAIN", "ap-southeast-1.e2b.fc.aliyuncs.com")),
 		WithIntegration("e2b-go-sdk-template-integration/1.0"),
 	)
 	if err != nil {
@@ -130,8 +130,8 @@ func TestTemplateIntegrationBuildCopy(t *testing.T) {
 
 	client, err := NewClient(
 		WithAPIKey(apiKey),
-		WithAPIURL(envString("E2B_API_URL", "https://api.cn-beijing.e2b.fc.aliyuncs.com")),
-		WithDomain(envString("E2B_DOMAIN", "cn-beijing.e2b.fc.aliyuncs.com")),
+		WithAPIURL(envString("E2B_API_URL", "https://api.ap-southeast-1.e2b.fc.aliyuncs.com")),
+		WithDomain(envString("E2B_DOMAIN", "ap-southeast-1.e2b.fc.aliyuncs.com")),
 		WithIntegration("e2b-go-sdk-template-copy-integration/1.0"),
 	)
 	if err != nil {

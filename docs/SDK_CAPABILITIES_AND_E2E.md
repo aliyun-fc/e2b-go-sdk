@@ -8,8 +8,8 @@
 
 ```sh
 export E2B_API_KEY=***
-export E2B_API_URL=https://api.cn-beijing.e2b.fc.aliyuncs.com
-export E2B_DOMAIN=cn-beijing.e2b.fc.aliyuncs.com
+export E2B_API_URL=https://api.ap-southeast-1.e2b.fc.aliyuncs.com
+export E2B_DOMAIN=ap-southeast-1.e2b.fc.aliyuncs.com
 ```
 
 常用可选变量：
