@@ -50,8 +50,8 @@ type SandboxNetworkOpts struct {
 	AllowOut           []string            `json:"allow_out,omitempty"`
 	DenyOut            []string            `json:"deny_out,omitempty"`
 	Rules              SandboxNetworkRules `json:"rules,omitempty"`
-	AllowPublicTraffic *bool               `json:"allow_public_traffic,omitempty"`
-	MaskRequestHost    string              `json:"mask_request_host,omitempty"`
+	AllowPublicTraffic *bool               `json:"allowPublicTraffic,omitempty"`
+	MaskRequestHost    string              `json:"maskRequestHost,omitempty"`
 }
 
 // SandboxNetworkUpdate replaces the sandbox network configuration atomically.
@@ -67,8 +67,8 @@ type SandboxNetworkInfo struct {
 	AllowOut           []string            `json:"allow_out,omitempty"`
 	DenyOut            []string            `json:"deny_out,omitempty"`
 	Rules              SandboxNetworkRules `json:"rules,omitempty"`
-	AllowPublicTraffic *bool               `json:"allow_public_traffic,omitempty"`
-	MaskRequestHost    string              `json:"mask_request_host,omitempty"`
+	AllowPublicTraffic *bool               `json:"allowPublicTraffic,omitempty"`
+	MaskRequestHost    string              `json:"maskRequestHost,omitempty"`
 }
 
 // SandboxVolumeMount maps a team volume into a sandbox.
