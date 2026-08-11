@@ -76,6 +76,42 @@ func TestSandboxCreateEmptyTemplateDefaultsAndOptions(t *testing.T) {
 	}
 }
 
+func TestSandboxCreateNetworkUsesControlPlaneFieldNames(t *testing.T) {
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		network, ok := body["network"].(map[string]any)
+		if !ok {
+			t.Fatalf("network = %#v", body["network"])
+		}
+		if network["allowPublicTraffic"] != true {
+			t.Fatalf("allowPublicTraffic = %#v", network["allowPublicTraffic"])
+		}
+		if network["maskRequestHost"] != "masked-${PORT}.local" {
+			t.Fatalf("maskRequestHost = %#v", network["maskRequestHost"])
+		}
+		if _, exists := network["allow_public_traffic"]; exists {
+			t.Fatalf("unexpected snake_case allow_public_traffic: %#v", network)
+		}
+		if _, exists := network["mask_request_host"]; exists {
+			t.Fatalf("unexpected snake_case mask_request_host: %#v", network)
+		}
+		return jsonResponse(http.StatusCreated, `{"clientID":"c","envdVersion":"0.6.4","sandboxID":"sbx","templateID":"base","domain":"example.com"}`, nil), nil
+	})
+
+	client := mustTestClient(t, transport)
+	allowPublic := true
+	_, err := client.CreateSandbox(context.Background(), WithNetwork(SandboxNetworkOpts{
+		AllowPublicTraffic: &allowPublic,
+		MaskRequestHost:    "masked-${PORT}.local",
+	}))
+	if err != nil {
+		t.Fatalf("CreateSandbox: %v", err)
+	}
+}
+
 func TestSandboxCreateEmptyTemplateWithMCPUsesGateway(t *testing.T) {
 	var templateID string
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -430,6 +466,30 @@ func TestSandboxGetInfo(t *testing.T) {
 	}
 	if info.Metadata == nil {
 		t.Fatal("metadata should be non-nil default")
+	}
+}
+
+func TestSandboxGetInfoDecodesControlPlaneNetworkFieldNames(t *testing.T) {
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{
+			"sandboxID":"sbx_test",
+			"templateID":"base",
+			"state":"running",
+			"cpuCount":2,
+			"memoryMB":512,
+			"network":{"allowPublicTraffic":true,"maskRequestHost":"masked-${PORT}.local"}
+		}`, nil), nil
+	})
+	s := sbcovSandbox(t, transport)
+	info, err := s.GetInfo(context.Background())
+	if err != nil {
+		t.Fatalf("GetInfo: %v", err)
+	}
+	if info.Network == nil || info.Network.AllowPublicTraffic == nil || !*info.Network.AllowPublicTraffic {
+		t.Fatalf("network allowPublicTraffic = %#v", info.Network)
+	}
+	if info.Network.MaskRequestHost != "masked-${PORT}.local" {
+		t.Fatalf("network maskRequestHost = %q", info.Network.MaskRequestHost)
 	}
 }
 
