@@ -96,6 +96,101 @@ func TestCreateSandboxRequestAndResponse(t *testing.T) {
 	}
 }
 
+func TestSandboxNetworkJSONMatchesControlPlane(t *testing.T) {
+	rules := SandboxNetworkRules{
+		"api.example.com": {
+			{
+				Transform: &SandboxNetworkTransform{
+					Headers: map[string]string{
+						"Authorization": "Bearer test-token",
+						"X-Tenant":      "tenant-a",
+						"fc.sandbox.network.header-value-replacements": `[{"placeholder":"sbx-key-0001","value":"real-secret-value"}]`,
+					},
+				},
+			},
+		},
+	}
+
+	createBody, err := json.Marshal(SandboxNetworkOpts{
+		AllowOut: []string{"api.example.com"},
+		DenyOut:  []string{AllTraffic},
+		Rules:    rules,
+	})
+	if err != nil {
+		t.Fatalf("marshal create network: %v", err)
+	}
+	wantCreate := `{"allowOut":["api.example.com"],"denyOut":["0.0.0.0/0"],"rules":{"api.example.com":[{"transform":{"headers":{"Authorization":"Bearer test-token","X-Tenant":"tenant-a","fc.sandbox.network.header-value-replacements":"[{\"placeholder\":\"sbx-key-0001\",\"value\":\"real-secret-value\"}]"}}}]}}`
+	if string(createBody) != wantCreate {
+		t.Fatalf("create network JSON = %s, want %s", createBody, wantCreate)
+	}
+
+	updateBody, err := json.Marshal(SandboxNetworkUpdate{
+		AllowOut: []string{"api.example.com"},
+		DenyOut:  []string{AllTraffic},
+		Rules:    rules,
+	})
+	if err != nil {
+		t.Fatalf("marshal update network: %v", err)
+	}
+	wantUpdate := `{"allowOut":["api.example.com"],"denyOut":["0.0.0.0/0"],"rules":{"api.example.com":[{"transform":{"headers":{"Authorization":"Bearer test-token","X-Tenant":"tenant-a","fc.sandbox.network.header-value-replacements":"[{\"placeholder\":\"sbx-key-0001\",\"value\":\"real-secret-value\"}]"}}}]}}`
+	if string(updateBody) != wantUpdate {
+		t.Fatalf("update network JSON = %s, want %s", updateBody, wantUpdate)
+	}
+}
+
+func TestSandboxNetworkJSONUsesDefaultOmitEmptySemantics(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{name: "create omitted rules", value: SandboxNetworkOpts{}, want: `{}`},
+		{name: "create empty rules", value: SandboxNetworkOpts{Rules: SandboxNetworkRules{}}, want: `{}`},
+		{name: "create empty allow out", value: SandboxNetworkOpts{AllowOut: []string{}}, want: `{}`},
+		{name: "update omitted rules", value: SandboxNetworkUpdate{DenyOut: []string{"1.1.1.1"}}, want: `{"denyOut":["1.1.1.1"]}`},
+		{name: "update empty rules", value: SandboxNetworkUpdate{Rules: SandboxNetworkRules{}}, want: `{}`},
+		{name: "update empty egress", value: SandboxNetworkUpdate{AllowOut: []string{}, DenyOut: []string{}}, want: `{}`},
+		{name: "empty update", value: SandboxNetworkUpdate{}, want: `{}`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := json.Marshal(test.value)
+			if err != nil {
+				t.Fatalf("json.Marshal: %v", err)
+			}
+			if string(got) != test.want {
+				t.Fatalf("JSON = %s, want %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestSandboxNetworkInfoDecodesRules(t *testing.T) {
+	var info SandboxNetworkInfo
+	err := json.Unmarshal([]byte(`{
+		"allowOut":["api.example.com"],
+		"denyOut":["0.0.0.0/0"],
+		"rules":{"api.example.com":[{"transform":{"headers":{"Authorization":"Bearer test-token","fc.sandbox.network.header-value-replacements":"[{\"placeholder\":\"sbx-key-0001\",\"value\":\"real-secret-value\"}]"}}}]}
+	}`), &info)
+	if err != nil {
+		t.Fatalf("unmarshal sandbox network info: %v", err)
+	}
+	if len(info.AllowOut) != 1 || info.AllowOut[0] != "api.example.com" {
+		t.Fatalf("allowOut = %#v", info.AllowOut)
+	}
+	if len(info.DenyOut) != 1 || info.DenyOut[0] != AllTraffic {
+		t.Fatalf("denyOut = %#v", info.DenyOut)
+	}
+	rules := info.Rules["api.example.com"]
+	if len(rules) != 1 || rules[0].Transform == nil || rules[0].Transform.Headers["Authorization"] != "Bearer test-token" {
+		t.Fatalf("rules = %#v", info.Rules)
+	}
+	if got := rules[0].Transform.Headers["fc.sandbox.network.header-value-replacements"]; got != `[{"placeholder":"sbx-key-0001","value":"real-secret-value"}]` {
+		t.Fatalf("header value replacements carrier = %q", got)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {

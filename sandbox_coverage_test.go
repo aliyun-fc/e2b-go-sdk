@@ -393,7 +393,7 @@ func TestSandboxSetTimeoutDebugShortCircuits(t *testing.T) {
 }
 
 func TestSandboxUpdateNetwork(t *testing.T) {
-	var body SandboxNetworkUpdate
+	var body map[string]json.RawMessage
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if r.Method != http.MethodPut || r.URL.Path != "/sandboxes/sbx_test/network" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
@@ -408,8 +408,14 @@ func TestSandboxUpdateNetwork(t *testing.T) {
 	if err := s.UpdateNetwork(context.Background(), SandboxNetworkUpdate{AllowInternetAccess: &allow, DenyOut: []string{"1.1.1.1"}}); err != nil {
 		t.Fatalf("UpdateNetwork: %v", err)
 	}
-	if body.AllowInternetAccess == nil || !*body.AllowInternetAccess {
-		t.Fatalf("allow_internet_access = %#v", body.AllowInternetAccess)
+	if string(body["allow_internet_access"]) != "true" {
+		t.Fatalf("allow_internet_access = %s", body["allow_internet_access"])
+	}
+	if string(body["denyOut"]) != `["1.1.1.1"]` {
+		t.Fatalf("denyOut = %s", body["denyOut"])
+	}
+	if _, exists := body["deny_out"]; exists {
+		t.Fatalf("unexpected Python field name on the wire: %s", body["deny_out"])
 	}
 }
 

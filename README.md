@@ -208,6 +208,36 @@ if err != nil {
 fmt.Println(info.SandboxID, info.TemplateID, info.State)
 ```
 
+`Rules` 及其更新语义与 E2B 保持一致。FC 仅新增
+`transform.headers["fc.sandbox.network.header-value-replacements"]`，用于请求头值替换：
+
+```go
+rules := e2b.SandboxNetworkRules{
+	"httpbin.e2b.team": {
+		{
+			Transform: &e2b.SandboxNetworkTransform{
+				Headers: map[string]string{
+					"fc.sandbox.network.header-value-replacements":
+						`[{"placeholder":"sbx-key-0001","value":"real-secret-value"}]`,
+				},
+			},
+		},
+	},
+}
+
+sandbox, err := client.CreateSandbox(
+	ctx,
+	e2b.WithNetwork(e2b.SandboxNetworkOpts{
+		AllowOut: []string{"httpbin.e2b.team"},
+		DenyOut:  []string{"0.0.0.0/0"},
+		Rules:    rules,
+	}),
+)
+```
+
+该字段的值是 `placeholder/value` 数组的 JSON 字符串；其中 `value` 可能包含敏感信息，
+请勿写入日志。
+
 `SandboxAccessToken()` 是供 CSM 等受信代理使用的 FC 专用扩展，不属于上游 E2B SDK 的公开 API。返回值是敏感信息，只应直接用于 sandbox 请求的 `X-Access-Token`，不得记录、序列化、持久化或向非受信组件暴露。
 
 列出当前 sandbox：

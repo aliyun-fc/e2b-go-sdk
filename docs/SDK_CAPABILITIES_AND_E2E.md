@@ -91,6 +91,7 @@ go test ./test/e2e -count=1 -v -timeout 90m
 | FC 受信集成读取 envd token | `SandboxAccessToken` | 已覆盖 | FC 专用扩展，非上游公开 API；敏感凭证不在 E2E 输出或断言 |
 | signed file URL | `DownloadURL`、`UploadURL` | 已覆盖 | `TestSandboxAdvancedFeatures` |
 | MCP sandbox | `WithMCP`、`MCPToken`、`GetMCPURL` | 已覆盖创建参数和 token helper | 暂无真实 MCP gateway E2E |
+| 按域名出站 Header Rules | `SandboxNetworkRules`、`SandboxNetworkTransform`、`WithNetwork`、`Sandbox.UpdateNetwork` | 已覆盖 Create/Update wire JSON、AllowOut/DenyOut tag、replacement carrier 和 GetInfo 解码 | hz-test 独立回归脚本 |
 
 ### Commands
 
