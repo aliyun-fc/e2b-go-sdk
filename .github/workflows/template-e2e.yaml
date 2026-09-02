@@ -1,0 +1,64 @@
+name: Template Safety E2E
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Do not cancel a running build: Go test cleanup needs time to stop the sandbox
+# before explicitly deleting the template.
+concurrency:
+  group: template-safety-e2e-ap-southeast-1
+  cancel-in-progress: false
+
+jobs:
+  template-safety-e2e:
+    # Never expose cloud credentials to fork pull requests.
+    if: >-
+      github.repository == 'aliyun-fc/e2b-go-sdk' &&
+      (
+        github.ref == 'refs/heads/master' ||
+        (
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        )
+      )
+    runs-on: ubuntu-latest
+    environment: e2e-singapore
+    timeout-minutes: 60
+    env:
+      E2B_API_URL: https://api.ap-southeast-1.e2b.fc.aliyuncs.com
+      E2B_DOMAIN: ap-southeast-1.e2b.fc.aliyuncs.com
+      E2B_TEMPLATE_E2E: "1"
+      E2B_TEMPLATE_E2E_IMAGE: fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.47
+      E2B_TEMPLATE_E2E_TIMEOUT_SECONDS: "2700"
+      E2B_TEMPLATE_E2E_REQUEST_TIMEOUT_SECONDS: "180"
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.13"
+          cache: true
+      - name: Failed rebuild preserves template and sandbox
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY_SINGAPORE }}
+        run: |
+          if [ -z "${E2B_API_KEY:-}" ]; then
+            echo "::error::E2B_API_KEY_SINGAPORE is not configured in the e2e-singapore environment"
+            exit 1
+          fi
+          go test ./test/e2e \
+            -run '^TestTemplateFromImageBuildQueryDeleteAndSpawn$' \
+            -count=1 \
+            -v \
+            -timeout 55m

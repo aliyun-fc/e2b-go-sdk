@@ -11,7 +11,7 @@
 
 ## 项目概览
 
-这是官方 E2B Go SDK（`github.com/e2b-dev/e2b-go-sdk`）。仓库采用单一扁平 Go 包：根目录全部是 `package e2b`，除 `examples/` 外没有子包；文件按业务域拆分。
+这是官方 E2B Go SDK（`github.com/aliyun-fc/e2b-go-sdk`）。仓库采用单一扁平 Go 包：根目录全部是 `package e2b`，除 `examples/` 外没有子包；文件按业务域拆分。
 
 主要能力：
 

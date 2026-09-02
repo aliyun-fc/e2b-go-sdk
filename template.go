@@ -268,7 +268,8 @@ func templateBuildOptionsFrom(opts ...TemplateBuildOption) templateBuildOptions 
 	return options
 }
 
-// BuildTemplate builds a template and waits until it finishes.
+// BuildTemplate builds a template and waits until it finishes. Build failures
+// never delete the template returned by the control plane.
 func (c *Client) BuildTemplate(ctx context.Context, template *Template, name string, opts ...TemplateBuildOption) (BuildInfo, error) {
 	info, err := c.BuildTemplateInBackground(ctx, template, name, opts...)
 	if err != nil {
@@ -299,7 +300,8 @@ func (c *Client) BuildTemplate(ctx context.Context, template *Template, name str
 	}
 }
 
-// BuildTemplateInBackground requests and triggers a template build.
+// BuildTemplateInBackground requests and triggers a template build. Setup and
+// trigger failures never delete the template returned by the control plane.
 func (c *Client) BuildTemplateInBackground(ctx context.Context, template *Template, name string, opts ...TemplateBuildOption) (BuildInfo, error) {
 	options := templateBuildOptionsFrom(opts...)
 	req := map[string]any{
@@ -329,11 +331,11 @@ func (c *Client) BuildTemplateInBackground(ctx context.Context, template *Templa
 			body.Force = true
 		}
 		if err := c.prepareTemplateFilesWithHeaders(ctx, response.TemplateID, &body, options.apiHeaders); err != nil {
-			return BuildInfo{}, &BuildError{Message: c.withTemplateCleanupError(response.TemplateID, err, options.apiHeaders).Error()}
+			return BuildInfo{}, &BuildError{Message: err.Error()}
 		}
 		path := "/v2/templates/" + url.PathEscape(response.TemplateID) + "/builds/" + url.PathEscape(response.BuildID)
 		if err := c.doJSONWithHeaders(ctx, http.MethodPost, path, nil, body, nil, options.apiHeaders); err != nil {
-			return BuildInfo{}, &BuildError{Message: c.withTemplateCleanupError(response.TemplateID, err, options.apiHeaders).Error()}
+			return BuildInfo{}, &BuildError{Message: err.Error()}
 		}
 	}
 	return BuildInfo{
@@ -343,44 +345,6 @@ func (c *Client) BuildTemplateInBackground(ctx context.Context, template *Templa
 		Alias:      name,
 		Tags:       response.Tags,
 	}, nil
-}
-
-// withTemplateCleanupError deletes the template created for a failed build start
-// and returns cause. If cleanup also fails, it wraps cause together with the
-// cleanup error so both are surfaced.
-func (c *Client) withTemplateCleanupError(templateID string, cause error, headers map[string]string) error {
-	if err := c.deleteTemplateAfterBuildStartFailureWithHeaders(templateID, headers); err != nil {
-		return fmt.Errorf("%w; additionally failed to delete template %s after build start failure: %v", cause, templateID, err)
-	}
-	return cause
-}
-
-func (c *Client) deleteTemplateAfterBuildStartFailure(templateID string) error {
-	return c.deleteTemplateAfterBuildStartFailureWithHeaders(templateID, nil)
-}
-
-// deleteTemplateAfterBuildStartFailureWithHeaders deletes templateID with up to
-// three attempts and a linear backoff, using its own 30s timeout per attempt so
-// cleanup does not depend on the caller's context. It returns the last error if
-// every attempt fails.
-func (c *Client) deleteTemplateAfterBuildStartFailureWithHeaders(templateID string, headers map[string]string) error {
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		deleted, err := c.deleteTemplateWithHeaders(ctx, templateID, headers)
-		cancel()
-		if err == nil {
-			if deleted {
-				return nil
-			}
-			return nil
-		}
-		lastErr = err
-	}
-	return lastErr
 }
 
 type templateBuildFileUpload struct {
