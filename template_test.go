@@ -134,7 +134,7 @@ func TestTemplateCRUD(t *testing.T) {
 }
 
 func TestBuildTemplateSimpleFromImage(t *testing.T) {
-	const image = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.39"
+	const image = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.47"
 	var requestBuild map[string]any
 	var triggerBuild map[string]any
 

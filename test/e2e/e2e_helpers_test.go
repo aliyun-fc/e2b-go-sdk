@@ -125,36 +125,91 @@ func isSandboxGone(err error) bool {
 }
 
 // pollUntil calls fn every interval until it returns true, the timeout fires, or
-// ctx is cancelled. On timeout or cancellation it returns fn's last error if any,
-// otherwise the context/deadline error.
+// ctx is cancelled. Timeout and cancellation remain detectable with errors.Is;
+// the most recent callback error is included only as diagnostic context.
 func pollUntil(ctx context.Context, timeout, interval time.Duration, fn func() (bool, error)) error {
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	pollCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if err := pollCtx.Err(); err != nil {
+		return err
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	var lastErr error
 	for {
+		if err := pollCtx.Err(); err != nil {
+			return pollUntilTerminalError(err, lastErr)
+		}
 		ok, err := fn()
 		if err != nil {
 			lastErr = err
 		} else if ok {
 			return nil
+		} else {
+			lastErr = nil
 		}
 
 		select {
-		case <-ctx.Done():
-			if lastErr != nil {
-				return lastErr
-			}
-			return ctx.Err()
-		case <-deadline.C:
-			if lastErr != nil {
-				return lastErr
-			}
-			return context.DeadlineExceeded
+		case <-pollCtx.Done():
+			return pollUntilTerminalError(pollCtx.Err(), lastErr)
 		case <-ticker.C:
 		}
+	}
+}
+
+func pollUntilTerminalError(cause, lastErr error) error {
+	if lastErr == nil {
+		return cause
+	}
+	return fmt.Errorf("%w (last poll error: %v)", cause, lastErr)
+}
+
+func TestPollUntilDoesNotPollCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	calls := 0
+	err := pollUntil(ctx, time.Second, time.Hour, func() (bool, error) {
+		calls++
+		return false, nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("pollUntil error = %v, want context.Canceled", err)
+	}
+	if calls != 0 {
+		t.Fatalf("poll calls = %d, want 0 for an already canceled context", calls)
+	}
+}
+
+func TestPollUntilDeadlinePreservesCauseAndLastError(t *testing.T) {
+	transientErr := errors.New("temporary lookup failure")
+	err := pollUntil(context.Background(), 10*time.Millisecond, time.Hour, func() (bool, error) {
+		return false, transientErr
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("pollUntil error = %v, want context.DeadlineExceeded", err)
+	}
+	if !strings.Contains(err.Error(), transientErr.Error()) {
+		t.Fatalf("pollUntil error = %q, want last poll error %q", err, transientErr)
+	}
+}
+
+func TestPollUntilCancellationPreservesCauseAndLastError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	transientErr := errors.New("temporary lookup failure")
+	err := pollUntil(ctx, time.Second, time.Hour, func() (bool, error) {
+		cancel()
+		return false, transientErr
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("pollUntil error = %v, want context.Canceled", err)
+	}
+	if !strings.Contains(err.Error(), transientErr.Error()) {
+		t.Fatalf("pollUntil error = %q, want last poll error %q", err, transientErr)
 	}
 }
 

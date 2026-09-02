@@ -11,7 +11,7 @@ const (
 	defaultAPIURL            = "https://api.ap-southeast-1.e2b.fc.aliyuncs.com"
 	defaultDomain            = "ap-southeast-1.e2b.fc.aliyuncs.com"
 	defaultTemplate          = "code-interpreter-v1"
-	defaultTemplateFromImage = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.39"
+	defaultTemplateFromImage = "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.47"
 )
 
 func section(name string) {

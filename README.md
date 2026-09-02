@@ -145,9 +145,13 @@ export E2B_DOMAIN="ap-southeast-1.e2b.fc.aliyuncs.com"
 E2B_SANDBOX_LIFECYCLE_E2E=1 go test ./test/e2e -run TestSandboxLifecycle -count=1 -v
 E2B_SANDBOX_RUNTIME_E2E=1 go test ./test/e2e -run TestSandboxRuntimeModules -count=1 -v
 E2B_SANDBOX_ADVANCED_E2E=1 go test ./test/e2e -run TestSandboxAdvancedFeatures -count=1 -v
-E2B_TEMPLATE_E2E=1 go test ./test/e2e -run TestTemplateFromImageBuildQueryDeleteAndSpawn -count=1 -v
+E2B_TEMPLATE_E2E=1 go test ./test/e2e -run '^TestTemplateFromImageBuildQueryDeleteAndSpawn$' -count=1 -v -timeout 55m
 E2B_VOLUME_E2E=1 go test ./test/e2e -run TestVolumeLifecycleContentAndMount -count=1 -v
 ```
+
+模板 E2E 默认使用公共镜像 `fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.47`。它会创建带随机后缀的唯一模板和 sandbox，再把原模板 `TemplateID` 误当作 build 的 name 参数并制造本地 COPY 准备失败，验证原模板仍可查询、关联 sandbox 仍在运行且可执行命令；若随机生成的 `TemplateID` 以数字开头、不符合控制面的 name 语法，因而在模板解析前被拒绝，测试会改用该模板的唯一 alias 进入相同的已有模板失败路径。最后测试会先停止 sandbox，再校验资源归属并显式删除模板。可用 `E2B_TEMPLATE_E2E_NAME_PREFIX` 调整名称前缀，但不能覆盖随机后缀。
+
+GitHub Actions 配置了独立的新加坡模板安全 E2E job。工作流会在可信仓库的 `master` push、以 `master` 为目标的同仓库 pull request，或 `master` 上手动触发，要求 `e2e-singapore` environment 配置 `E2B_API_KEY_SINGAPORE`。fork pull request 只触发 workflow，不执行真实云端 job，也不会注入云端凭证。
 
 完整运行：
 
@@ -400,7 +404,7 @@ SDK 会在认证 clone 成功后把 `origin` 恢复为不包含凭据的 URL，�
 从镜像构建模板：
 
 ```go
-fromImage := "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.39"
+fromImage := "fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.47"
 templateName := "my-go-template"
 
 build, err := client.BuildTemplate(
@@ -421,6 +425,10 @@ if err != nil {
 fmt.Println("template_id:", build.TemplateID)
 fmt.Println("build_id:", build.BuildID)
 ```
+
+`BuildTemplate` 和 `BuildTemplateInBackground` 在 COPY 准备、文件上传或触发构建失败时只返回 `BuildError`，不会自动删除控制面返回的模板。同名模板可以用于 rebuild；如确实需要删除整个模板，请显式调用 `DeleteTemplate`。
+
+`WithTemplateTags` 会把请求 tag 发送给控制面；当前新加坡区域的 from-image 构建可能把自定义 tag 归一化为 `default`。真实 E2E 会记录实际 tags，但在控制面修复前不会把未原样返回视为 SDK 失败。
 
 `WithTemplateAPIHeaders` 对应上游 Python SDK 的 `api_headers` / JS SDK 的 `apiHeaders`，仅应用于本次模板构建的控制面请求，不会污染客户端的全局 Header，也不会发送到预签名文件上传 URL。使用后台构建时，状态查询需要显式传入相同选项：
 

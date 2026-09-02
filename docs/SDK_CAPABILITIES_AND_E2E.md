@@ -17,9 +17,11 @@ export E2B_DOMAIN=ap-southeast-1.e2b.fc.aliyuncs.com
 | 变量 | 说明 |
 | --- | --- |
 | `E2B_E2E_TEMPLATE` | 创建 sandbox 使用的基础模板，默认 `base` |
-| `E2B_E2E_KEEP_SANDBOX` | 设为 `1/true/yes/on` 时保留测试创建的 sandbox |
+| `E2B_E2E_KEEP_SANDBOX` | 设为 `1/true/yes/on` 时保留测试创建的 sandbox；模板安全 E2E 会同时保留关联 template，避免删除仍被 sandbox 使用的模板 |
 | `E2B_E2E_KEEP_TEMPLATE` | 设为 `1/true/yes/on` 时保留测试创建的 template |
 | `E2B_E2E_KEEP_VOLUME` | 设为 `1/true/yes/on` 时保留测试创建的 volume |
+| `E2B_TEMPLATE_E2E_IMAGE` | 模板 E2E 的基础镜像，默认公共镜像 `fc-e2b-registry.ap-southeast-1.cr.aliyuncs.com/runtime/base:v0.0.47` |
+| `E2B_TEMPLATE_E2E_NAME_PREFIX` | 模板 E2E 名称前缀；测试始终追加随机唯一后缀，不能指定完整旧模板名 |
 | `*_TIMEOUT_SECONDS` | 对应 E2E 总超时，单位秒 |
 | `*_REQUEST_TIMEOUT_SECONDS` | 对应 E2E 单请求超时，单位秒 |
 
@@ -31,7 +33,7 @@ export E2B_DOMAIN=ap-southeast-1.e2b.fc.aliyuncs.com
 | `TestSandboxRuntimeModules` | `test/e2e/sandbox_runtime_test.go` | `E2B_SANDBOX_RUNTIME_E2E=1` | Commands、Filesystem、Filesystem watch、PTY、Git |
 | `TestSandboxAdvancedFeatures` | `test/e2e/sandbox_advanced_test.go` | `E2B_SANDBOX_ADVANCED_E2E=1` | network update、metrics、signed file URL、error mapping、pause/reconnect、snapshot |
 | `TestVolumeLifecycleContentAndMount` | `test/e2e/volume_lifecycle_test.go` | `E2B_VOLUME_E2E=1` | Volume 创建、查询、连接、文件 API、metadata、挂载到 sandbox、销毁 |
-| `TestTemplateFromImageBuildQueryDeleteAndSpawn` | `test/e2e/template_from_image_test.go` | `E2B_TEMPLATE_E2E=1` | Template from image 构建、状态/列表/详情/tag 查询、创建 sandbox、删除 |
+| `TestTemplateFromImageBuildQueryDeleteAndSpawn` | `test/e2e/template_from_image_test.go` | `E2B_TEMPLATE_E2E=1` | Template from image 构建、查询、创建 sandbox；把原 `TemplateID` 误作 name 发起失败 rebuild（若其以数字开头、不符合控制面 name 语法，则确认被安全拒绝并用唯一 alias 覆盖已有模板失败路径）后，原模板和 sandbox 保持可用；确认停止和归属后显式删除 |
 | `TestTemplateIntegrationBuildCRUD` | `template_integration_test.go` | `E2B_TEMPLATE_INTEGRATION=1` | 根包历史 template from image 集成测试 |
 | `TestTemplateIntegrationBuildCopy` | `template_integration_test.go` | `E2B_TEMPLATE_COPY_INTEGRATION=1` | Template COPY 构建并用模板创建 sandbox |
 
@@ -42,8 +44,10 @@ E2B_SANDBOX_LIFECYCLE_E2E=1 go test ./test/e2e -run TestSandboxLifecycle -count=
 E2B_SANDBOX_RUNTIME_E2E=1 go test ./test/e2e -run TestSandboxRuntimeModules -count=1 -v
 E2B_SANDBOX_ADVANCED_E2E=1 go test ./test/e2e -run TestSandboxAdvancedFeatures -count=1 -v
 E2B_VOLUME_E2E=1 go test ./test/e2e -run TestVolumeLifecycleContentAndMount -count=1 -v
-E2B_TEMPLATE_E2E=1 go test ./test/e2e -run TestTemplateFromImageBuildQueryDeleteAndSpawn -count=1 -v
+E2B_TEMPLATE_E2E=1 go test ./test/e2e -run '^TestTemplateFromImageBuildQueryDeleteAndSpawn$' -count=1 -v -timeout 55m
 ```
+
+CI 使用同一条定向命令和公共镜像。GitHub job 位于 `.github/workflows/template-e2e.yaml`，允许可信仓库的 `master` push、以 `master` 为目标的同仓库 pull request，以及 `master` 上的手动触发，并从 `e2e-singapore` environment 读取 `E2B_API_KEY_SINGAPORE`；fork pull request 不执行真实云端 job。
 
 完整真实 E2E：
 
@@ -60,7 +64,7 @@ go test ./test/e2e -count=1 -v -timeout 90m
 
 - `pause/reconnect` 和 `snapshot` 属于 advanced 可选能力；如果控制面返回 404/500/501/503 或 not supported，测试会标记为 skip。
 - `Volume` 如果控制面 `/volumes` 返回 `404 page not found`，说明当前环境未开通 volume API，测试会标记为 skip。
-- Template build 请求 tag 后，部分控制面会把 tag 归一到 `default`；E2E 会校验可查询 tag 列表，但不会强制要求请求 tag 原样返回。
+- SDK 会发送 `WithTemplateTags` 配置的请求 tag；当前在新加坡区域的 from-image 控制面观察到自定义 tag 被归一到 `default`。E2E 会记录该差异并验证 tag 列表可查询，控制面修复前不强制要求请求 tag 原样返回。
 
 ## 能力覆盖清单
 
@@ -150,12 +154,12 @@ go test ./test/e2e -count=1 -v -timeout 90m
 | builder from image | `NewTemplate().FromImage`、`FromDockerImage` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
 | builder from base template | `FromBaseTemplate` | 已覆盖 | `test/e2e/main.go` 的 full/template build 路径覆盖；暂无独立 Go test |
 | build steps | `RunCmd`、`SetEnv`、`Workdir`、`User`、`Copy` | 已覆盖 | `TestTemplateIntegrationBuildCopy` 覆盖 COPY；`test/e2e/main.go` full 路径覆盖 RUN/COPY/ENV |
-| build template | `BuildTemplate`、`BuildTemplateInBackground`、`WithTemplateAPIHeaders` | 已覆盖，包括 Header 作用域和 COPY 上传隔离 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
+| build template | `BuildTemplate`、`BuildTemplateInBackground`、`WithTemplateAPIHeaders` | 已覆盖，包括 Header 作用域、COPY 上传隔离和失败不隐式删除 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` 覆盖把原 `TemplateID` 误作 name 的真实请求，并在数字开头的 ID 被 name 语法前置拒绝时用唯一 alias 保证覆盖已有模板失败 rebuild |
 | build status | `GetBuildStatus`、`GetBuildStatusWithOptions` | 已覆盖，包括后台构建 Header 延续 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
 | list / get / exists | `ListTemplates`、`GetTemplate`、`TemplateExists` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
 | delete | `DeleteTemplate` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
-| tags | `WithTemplateTags`、`GetTemplateTags`、`AssignTemplateTags`、`RemoveTemplateTags` | 已覆盖 | `WithTemplateTags` / `GetTemplateTags` 已覆盖；assign/remove 暂无真实 E2E |
-| 用模板创建 sandbox | `CreateSandbox(WithTemplate(...))` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` |
+| tags | `WithTemplateTags`、`GetTemplateTags`、`AssignTemplateTags`、`RemoveTemplateTags` | 已覆盖请求字段和 tags API | `GetTemplateTags` 已覆盖；新加坡 from-image 自定义 tag 当前观察到返回 `default`，待控制面跟进；assign/remove 暂无真实 E2E |
+| 用模板创建 sandbox | `CreateSandbox(WithTemplate(...))` | 已覆盖 | `TestTemplateFromImageBuildQueryDeleteAndSpawn` 验证失败 rebuild 前后 sandbox 都可执行命令 |
 
 ### Volume
 

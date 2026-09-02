@@ -506,15 +506,16 @@ func TestBuildTemplateSkipCacheForcesBuild(t *testing.T) {
 	}
 }
 
-func TestBuildTemplatePrepareFilesErrorTriggersCleanup(t *testing.T) {
+func TestBuildTemplatePrepareFilesErrorDoesNotDeleteExistingTemplate(t *testing.T) {
 	tcovChdir(t, t.TempDir())
-	var deleted bool
+	const existingTemplateID = "existing-template-id"
+	var deleteCalls int
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v3/templates":
-			return jsonResponse(http.StatusAccepted, `{"templateID":"tpl","buildID":"bld"}`, nil), nil
-		case r.Method == http.MethodDelete && r.URL.Path == "/templates/tpl":
-			deleted = true
+			return jsonResponse(http.StatusAccepted, `{"templateID":"existing-template-id","buildID":"bld"}`, nil), nil
+		case r.Method == http.MethodDelete && r.URL.Path == "/templates/"+existingTemplateID:
+			deleteCalls++
 			return jsonResponse(http.StatusNoContent, ``, nil), nil
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
@@ -527,7 +528,7 @@ func TestBuildTemplatePrepareFilesErrorTriggersCleanup(t *testing.T) {
 	_, err := client.BuildTemplate(
 		context.Background(),
 		NewTemplate().FromImage("ubuntu:24.04").Copy("missing.txt", "/dest"),
-		"cleanup",
+		existingTemplateID,
 	)
 	var buildErr *BuildError
 	if !errors.As(err, &buildErr) {
@@ -536,25 +537,30 @@ func TestBuildTemplatePrepareFilesErrorTriggersCleanup(t *testing.T) {
 	if !strings.Contains(buildErr.Message, "no files found") {
 		t.Fatalf("message = %q", buildErr.Message)
 	}
-	if !deleted {
-		t.Fatal("expected cleanup DELETE")
+	if deleteCalls != 0 {
+		t.Fatalf("unexpected DELETE of existing template: calls = %d", deleteCalls)
 	}
 }
 
-func TestBuildTemplateTriggerErrorTriggersCleanup(t *testing.T) {
+func TestBuildTemplateTriggerErrorDoesNotDeleteExistingTemplate(t *testing.T) {
 	const headerName = "X-E2B-Template-Build-Mode"
-	var deleted bool
+	const existingTemplateID = "existing-template-id"
+	var deleteCalls int
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v3/templates":
-			return jsonResponse(http.StatusAccepted, `{"templateID":"tpl","buildID":"bld"}`, nil), nil
-		case r.Method == http.MethodPost && r.URL.Path == "/v2/templates/tpl/builds/bld":
-			return jsonResponse(http.StatusBadRequest, `{"code":400,"message":"steps are not supported"}`, nil), nil
-		case r.Method == http.MethodDelete && r.URL.Path == "/templates/tpl":
-			deleted = true
-			if got := r.Header.Get(headerName); got != "micro" {
-				t.Fatalf("cleanup build header = %q", got)
+			var request map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode build request: %v", err)
 			}
+			if request["name"] != existingTemplateID {
+				t.Fatalf("build name = %#v, want %q", request["name"], existingTemplateID)
+			}
+			return jsonResponse(http.StatusAccepted, `{"templateID":"existing-template-id","buildID":"bld"}`, nil), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/templates/"+existingTemplateID+"/builds/bld":
+			return jsonResponse(http.StatusBadRequest, `{"code":400,"message":"steps are not supported"}`, nil), nil
+		case r.Method == http.MethodDelete && r.URL.Path == "/templates/"+existingTemplateID:
+			deleteCalls++
 			return jsonResponse(http.StatusOK, ``, nil), nil
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
@@ -563,10 +569,10 @@ func TestBuildTemplateTriggerErrorTriggersCleanup(t *testing.T) {
 	})
 
 	client := mustTestClient(t, transport)
-	_, err := client.BuildTemplate(
+	_, err := client.BuildTemplateInBackground(
 		context.Background(),
 		NewTemplate().FromImage("ubuntu:24.04"),
-		"trigger-fail",
+		existingTemplateID,
 		WithTemplateAPIHeaders(map[string]string{headerName: "micro"}),
 	)
 	var buildErr *BuildError
@@ -576,20 +582,23 @@ func TestBuildTemplateTriggerErrorTriggersCleanup(t *testing.T) {
 	if !strings.Contains(buildErr.Message, "steps are not supported") {
 		t.Fatalf("message = %q", buildErr.Message)
 	}
-	if !deleted {
-		t.Fatal("expected cleanup DELETE")
+	if deleteCalls != 0 {
+		t.Fatalf("unexpected DELETE of existing template: calls = %d", deleteCalls)
 	}
 }
 
-func TestBuildTemplateCleanupFailureWrapsError(t *testing.T) {
+func TestBuildTemplateTriggerTransportErrorDoesNotDeleteExistingTemplate(t *testing.T) {
+	const existingTemplateID = "existing-template-id"
+	var deleteCalls int
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v3/templates":
-			return jsonResponse(http.StatusAccepted, `{"templateID":"tpl","buildID":"bld"}`, nil), nil
-		case r.Method == http.MethodPost && r.URL.Path == "/v2/templates/tpl/builds/bld":
-			return jsonResponse(http.StatusBadRequest, `{"code":400,"message":"boom"}`, nil), nil
-		case r.Method == http.MethodDelete && r.URL.Path == "/templates/tpl":
-			return jsonResponse(http.StatusInternalServerError, `{"code":500,"message":"delete failed"}`, nil), nil
+			return jsonResponse(http.StatusAccepted, `{"templateID":"existing-template-id","buildID":"bld"}`, nil), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/templates/"+existingTemplateID+"/builds/bld":
+			return nil, errors.New("trigger transport failed")
+		case r.Method == http.MethodDelete && r.URL.Path == "/templates/"+existingTemplateID:
+			deleteCalls++
+			return jsonResponse(http.StatusNoContent, ``, nil), nil
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
 			return nil, nil
@@ -597,28 +606,211 @@ func TestBuildTemplateCleanupFailureWrapsError(t *testing.T) {
 	})
 
 	client := mustTestClient(t, transport)
-	_, err := client.BuildTemplate(context.Background(), NewTemplate().FromImage("ubuntu:24.04"), "wrap")
+	_, err := client.BuildTemplateInBackground(context.Background(), NewTemplate().FromImage("ubuntu:24.04"), existingTemplateID)
 	var buildErr *BuildError
 	if !errors.As(err, &buildErr) {
 		t.Fatalf("error = %T %v", err, err)
 	}
-	if !strings.Contains(buildErr.Message, "failed to delete template") {
+	if !strings.Contains(buildErr.Message, "trigger transport failed") {
 		t.Fatalf("message = %q", buildErr.Message)
+	}
+	if deleteCalls != 0 {
+		t.Fatalf("unexpected DELETE of existing template: calls = %d", deleteCalls)
 	}
 }
 
-func TestDeleteTemplateAfterBuildStartFailureNotFound(t *testing.T) {
+func TestBuildTemplateFileLookupErrorDoesNotDeleteExistingTemplate(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "copy.txt"), []byte("copy\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	tcovChdir(t, dir)
+
+	const existingTemplateID = "existing-template-id"
+	var deleteCalls int
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.Method != http.MethodDelete || r.URL.Path != "/templates/tpl" {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v3/templates":
+			return jsonResponse(http.StatusAccepted, `{"templateID":"existing-template-id","buildID":"bld"}`, nil), nil
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/templates/"+existingTemplateID+"/files/"):
+			return jsonResponse(http.StatusInternalServerError, `{"code":500,"message":"files unavailable"}`, nil), nil
+		case r.Method == http.MethodDelete && r.URL.Path == "/templates/"+existingTemplateID:
+			deleteCalls++
+			return jsonResponse(http.StatusNoContent, ``, nil), nil
+		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
+			return nil, nil
 		}
-		return jsonResponse(http.StatusNotFound, `{"code":404}`, nil), nil
 	})
 
 	client := mustTestClient(t, transport)
-	// A 404 means the template is already gone; cleanup must treat that as success.
-	if err := client.deleteTemplateAfterBuildStartFailure("tpl"); err != nil {
-		t.Fatalf("deleteTemplateAfterBuildStartFailure: %v", err)
+	_, err := client.BuildTemplateInBackground(
+		context.Background(),
+		NewTemplate().FromImage("ubuntu:24.04").Copy("copy.txt", "/dest"),
+		existingTemplateID,
+	)
+	var buildErr *BuildError
+	if !errors.As(err, &buildErr) {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if !strings.Contains(buildErr.Message, "files unavailable") {
+		t.Fatalf("message = %q", buildErr.Message)
+	}
+	if deleteCalls != 0 {
+		t.Fatalf("unexpected DELETE of existing template: calls = %d", deleteCalls)
+	}
+}
+
+func TestBuildTemplateFileUploadErrorDoesNotDeleteExistingTemplate(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "copy.txt"), []byte("copy\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	tcovChdir(t, dir)
+
+	const existingTemplateID = "existing-template-id"
+	var deleteCalls int
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v3/templates":
+			return jsonResponse(http.StatusAccepted, `{"templateID":"existing-template-id","buildID":"bld"}`, nil), nil
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/templates/"+existingTemplateID+"/files/"):
+			return jsonResponse(http.StatusOK, `{"present":false,"url":"https://upload.test/context"}`, nil), nil
+		case r.Method == http.MethodPut && r.URL.Host == "upload.test":
+			return jsonResponse(http.StatusBadGateway, `{"message":"upload unavailable"}`, nil), nil
+		case r.Method == http.MethodDelete && r.URL.Path == "/templates/"+existingTemplateID:
+			deleteCalls++
+			return jsonResponse(http.StatusNoContent, ``, nil), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
+			return nil, nil
+		}
+	})
+
+	client := mustTestClient(t, transport)
+	_, err := client.BuildTemplateInBackground(
+		context.Background(),
+		NewTemplate().FromImage("ubuntu:24.04").Copy("copy.txt", "/dest"),
+		existingTemplateID,
+	)
+	var buildErr *BuildError
+	if !errors.As(err, &buildErr) {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if !strings.Contains(buildErr.Message, "upload template files") {
+		t.Fatalf("message = %q", buildErr.Message)
+	}
+	if deleteCalls != 0 {
+		t.Fatalf("unexpected DELETE of existing template: calls = %d", deleteCalls)
+	}
+}
+
+func TestBuildTemplateEmptyUploadURLDoesNotDeleteExistingTemplate(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "copy.txt"), []byte("copy\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	tcovChdir(t, dir)
+
+	const existingTemplateID = "existing-template-id"
+	var deleteCalls int
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v3/templates":
+			return jsonResponse(http.StatusAccepted, `{"templateID":"existing-template-id","buildID":"bld"}`, nil), nil
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/templates/"+existingTemplateID+"/files/"):
+			return jsonResponse(http.StatusOK, `{"present":false}`, nil), nil
+		case r.Method == http.MethodDelete && r.URL.Path == "/templates/"+existingTemplateID:
+			deleteCalls++
+			return jsonResponse(http.StatusNoContent, ``, nil), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
+			return nil, nil
+		}
+	})
+
+	client := mustTestClient(t, transport)
+	_, err := client.BuildTemplateInBackground(
+		context.Background(),
+		NewTemplate().FromImage("ubuntu:24.04").Copy("copy.txt", "/dest"),
+		existingTemplateID,
+	)
+	var buildErr *BuildError
+	if !errors.As(err, &buildErr) {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if !strings.Contains(buildErr.Message, "upload URL is empty") {
+		t.Fatalf("message = %q", buildErr.Message)
+	}
+	if deleteCalls != 0 {
+		t.Fatalf("unexpected DELETE of existing template: calls = %d", deleteCalls)
+	}
+}
+
+func TestBuildTemplateTriggerContextCancellationDoesNotDeleteExistingTemplate(t *testing.T) {
+	const existingTemplateID = "existing-template-id"
+	ctx, cancel := context.WithCancel(context.Background())
+	var deleteCalls int
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v3/templates":
+			return jsonResponse(http.StatusAccepted, `{"templateID":"existing-template-id","buildID":"bld"}`, nil), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/templates/"+existingTemplateID+"/builds/bld":
+			cancel()
+			return nil, r.Context().Err()
+		case r.Method == http.MethodDelete && r.URL.Path == "/templates/"+existingTemplateID:
+			deleteCalls++
+			return jsonResponse(http.StatusNoContent, ``, nil), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
+			return nil, nil
+		}
+	})
+
+	client := mustTestClient(t, transport)
+	_, err := client.BuildTemplateInBackground(ctx, NewTemplate().FromImage("ubuntu:24.04"), existingTemplateID)
+	var buildErr *BuildError
+	if !errors.As(err, &buildErr) {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if deleteCalls != 0 {
+		t.Fatalf("unexpected DELETE of existing template: calls = %d", deleteCalls)
+	}
+}
+
+func TestBuildTemplateRebuildExistingNameWithoutPreflight(t *testing.T) {
+	const existingTemplateID = "existing-template-id"
+	var statusCalls int
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v3/templates":
+			return jsonResponse(http.StatusAccepted, `{"templateID":"existing-template-id","buildID":"new-build-id"}`, nil), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/templates/"+existingTemplateID+"/builds/new-build-id":
+			return jsonResponse(http.StatusNoContent, ``, nil), nil
+		case r.Method == http.MethodGet && r.URL.Path == "/templates/"+existingTemplateID+"/builds/new-build-id/status":
+			statusCalls++
+			return jsonResponse(http.StatusOK, `{"status":"ready","logEntries":[]}`, nil), nil
+		default:
+			t.Fatalf("unexpected request (including preflight): %s %s", r.Method, r.URL.RequestURI())
+			return nil, nil
+		}
+	})
+
+	client := mustTestClient(t, transport)
+	info, err := client.BuildTemplate(
+		context.Background(),
+		NewTemplate().FromImage("ubuntu:24.04"),
+		existingTemplateID,
+		WithTemplatePollPeriod(time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("BuildTemplate: %v", err)
+	}
+	if info.TemplateID != existingTemplateID || info.BuildID != "new-build-id" {
+		t.Fatalf("build info = %#v", info)
+	}
+	if statusCalls != 1 {
+		t.Fatalf("status calls = %d, want 1", statusCalls)
 	}
 }
 
