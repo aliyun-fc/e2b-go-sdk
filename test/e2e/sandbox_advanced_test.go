@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	e2b "github.com/e2b-dev/e2b-go-sdk"
+	e2b "github.com/aliyun-fc/e2b-go-sdk"
 )
 
 const sandboxAdvancedE2EFlag = "E2B_SANDBOX_ADVANCED_E2E"

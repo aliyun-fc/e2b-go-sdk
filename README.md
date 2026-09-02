@@ -18,7 +18,7 @@ E2B Go SDK 是面向 Go 用户的 E2B 官方 SDK。它参考 E2B Python SDK 的 
 在你的 Go 项目中执行：
 
 ```sh
-go get github.com/e2b-dev/e2b-go-sdk
+go get github.com/aliyun-fc/e2b-go-sdk
 ```
 
 如果是在本仓库内体验示例，先设置 API Key：
@@ -49,7 +49,7 @@ import (
 	"strings"
 	"time"
 
-	e2b "github.com/e2b-dev/e2b-go-sdk"
+	e2b "github.com/aliyun-fc/e2b-go-sdk"
 )
 
 func main() {
