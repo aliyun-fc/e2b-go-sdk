@@ -324,13 +324,15 @@ func (s *Sandbox) SetTimeout(ctx context.Context, timeoutSeconds int) error {
 	return s.client.SetSandboxTimeout(ctx, s.sandboxID, timeoutSeconds)
 }
 
-// UpdateSandboxNetwork replaces sandbox egress network configuration.
+// UpdateSandboxNetwork atomically replaces the mutable sandbox network
+// configuration. Fields omitted from network are cleared by the control plane.
 func (c *Client) UpdateSandboxNetwork(ctx context.Context, sandboxID string, network SandboxNetworkUpdate) error {
 	path := "/sandboxes/" + url.PathEscape(sandboxID) + "/network"
 	return c.doJSON(ctx, http.MethodPut, path, nil, network, nil)
 }
 
-// UpdateNetwork replaces this sandbox egress network configuration.
+// UpdateNetwork atomically replaces this sandbox's mutable network
+// configuration. Fields omitted from network are cleared by the control plane.
 func (s *Sandbox) UpdateNetwork(ctx context.Context, network SandboxNetworkUpdate) error {
 	return s.client.UpdateSandboxNetwork(ctx, s.sandboxID, network)
 }

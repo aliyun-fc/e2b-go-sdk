@@ -32,7 +32,9 @@ type SandboxInfoLifecycle struct {
 	AutoResume bool   `json:"auto_resume"`
 }
 
-// SandboxNetworkTransform describes egress request transforms for a network rule.
+// SandboxNetworkTransform describes egress request transforms for a network
+// rule. FC header value replacements use the sandbox-gateway E2B carrier
+// "fc.sandbox.network.header-value-replacements" inside Headers.
 type SandboxNetworkTransform struct {
 	Headers map[string]string `json:"headers,omitempty"`
 }
@@ -42,30 +44,34 @@ type SandboxNetworkRule struct {
 	Transform *SandboxNetworkTransform `json:"transform,omitempty"`
 }
 
-// SandboxNetworkRules maps hostnames, IPs, or CIDR blocks to ordered rules.
+// SandboxNetworkRules maps exact destination hostnames to ordered rules. A host
+// registered here is not automatically allowed by the egress policy.
 type SandboxNetworkRules map[string][]SandboxNetworkRule
 
 // SandboxNetworkOpts is used when creating sandboxes.
 type SandboxNetworkOpts struct {
-	AllowOut           []string            `json:"allow_out,omitempty"`
-	DenyOut            []string            `json:"deny_out,omitempty"`
+	AllowOut           []string            `json:"allowOut,omitempty"`
+	DenyOut            []string            `json:"denyOut,omitempty"`
 	Rules              SandboxNetworkRules `json:"rules,omitempty"`
 	AllowPublicTraffic *bool               `json:"allowPublicTraffic,omitempty"`
 	MaskRequestHost    string              `json:"maskRequestHost,omitempty"`
 }
 
-// SandboxNetworkUpdate replaces the sandbox network configuration atomically.
+// SandboxNetworkUpdate atomically replaces the mutable sandbox network
+// configuration. The control plane clears AllowOut, DenyOut, or Rules when the
+// corresponding field is omitted, so callers must resend values they want to
+// preserve.
 type SandboxNetworkUpdate struct {
-	AllowOut            []string            `json:"allow_out,omitempty"`
-	DenyOut             []string            `json:"deny_out,omitempty"`
+	AllowOut            []string            `json:"allowOut,omitempty"`
+	DenyOut             []string            `json:"denyOut,omitempty"`
 	Rules               SandboxNetworkRules `json:"rules,omitempty"`
 	AllowInternetAccess *bool               `json:"allow_internet_access,omitempty"`
 }
 
 // SandboxNetworkInfo is network configuration returned by sandbox info.
 type SandboxNetworkInfo struct {
-	AllowOut           []string            `json:"allow_out,omitempty"`
-	DenyOut            []string            `json:"deny_out,omitempty"`
+	AllowOut           []string            `json:"allowOut,omitempty"`
+	DenyOut            []string            `json:"denyOut,omitempty"`
 	Rules              SandboxNetworkRules `json:"rules,omitempty"`
 	AllowPublicTraffic *bool               `json:"allowPublicTraffic,omitempty"`
 	MaskRequestHost    string              `json:"maskRequestHost,omitempty"`
