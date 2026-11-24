@@ -86,18 +86,34 @@ jobs:
           fi
           go run ./test/e2e
 
-  go-sdk-filesystem-pause-chengdu:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+  go-sdk-filesystem-pause-singapore:
+    # Never expose cloud credentials to fork pull requests.
+    if: >-
+      github.repository == 'aliyun-fc/e2b-go-sdk' &&
+      (
+        github.ref == 'refs/heads/master' ||
+        (
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        )
+      )
     runs-on: ubuntu-latest
+    environment: e2e-singapore
+    timeout-minutes: 40
     env:
-      E2B_API_KEY: ${{ secrets.E2B_API_KEY_CHENGDU }}
-      E2B_DOMAIN: cn-chengdu.e2b.fc.aliyuncs.com
-      E2B_API_URL: https://api.cn-chengdu.e2b.fc.aliyuncs.com
+      E2B_DOMAIN: ap-southeast-1.e2b.fc.aliyuncs.com
+      E2B_API_URL: https://api.ap-southeast-1.e2b.fc.aliyuncs.com
       E2B_E2E_TEMPLATE: base-msbx
       E2B_FILESYSTEM_PAUSE_E2E: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version: "1.24"
-      - run: go test . -run '^TestFilesystemOnlyPauseConnect$' -count=1 -v -timeout=35m
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.13"
+          cache: true
+      - name: Verify filesystem-only pause and connect
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY_SINGAPORE }}
+        run: go test . -run '^TestFilesystemOnlyPauseConnect$' -count=1 -v -timeout=35m
