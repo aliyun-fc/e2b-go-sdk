@@ -78,7 +78,7 @@ jobs:
     env:
       E2B_API_URL: "https://api.ap-southeast-1.e2b.fc.aliyuncs.com"
       E2B_DOMAIN: "ap-southeast-1.e2b.fc.aliyuncs.com"
-      E2B_E2E_TEMPLATE: "code-interpreter-v1"
+      E2B_E2E_TEMPLATE: "code-interpreter-v1-msbx"
       E2B_E2E_TIMEOUT_SECONDS: "900"
       E2B_E2E_SKIP_NETWORK_POLICY: "0"
     steps:
@@ -96,6 +96,5 @@ jobs:
       - name: Verify filesystem-only pause and connect
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY_SINGAPORE }}
-          E2B_E2E_TEMPLATE: "code-interpreter-v1-msbx"
           E2B_FILESYSTEM_PAUSE_E2E: "1"
         run: go test . -run '^TestFilesystemOnlyPauseConnect$' -count=1 -v -timeout=35m
