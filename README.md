@@ -34,6 +34,8 @@ export E2B_API_URL="https://api.ap-southeast-1.e2b.fc.aliyuncs.com"
 export E2B_DOMAIN="ap-southeast-1.e2b.fc.aliyuncs.com"
 ```
 
+手动暂停仅保存文件系统可使用 `sandbox.Pause(ctx, e2b.WithPauseMemory(false))`。超时暂停可在创建时组合使用 `e2b.WithLifecycle(e2b.SandboxLifecycle{OnTimeout: "pause"})` 和 `e2b.WithAutoPauseMemory(false)`。两种模式均可显式 ConnectSandbox 恢复文件，应用进程需重新启动。
+
 ## 5 分钟跑通
 
 新建 `main.go`：

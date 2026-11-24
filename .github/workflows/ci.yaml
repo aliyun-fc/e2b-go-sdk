@@ -85,3 +85,19 @@ jobs:
             exit 0
           fi
           go run ./test/e2e
+
+  go-sdk-filesystem-pause-chengdu:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    env:
+      E2B_API_KEY: ${{ secrets.E2B_API_KEY_CHENGDU }}
+      E2B_DOMAIN: cn-chengdu.e2b.fc.aliyuncs.com
+      E2B_API_URL: https://api.cn-chengdu.e2b.fc.aliyuncs.com
+      E2B_E2E_TEMPLATE: base-msbx
+      E2B_FILESYSTEM_PAUSE_E2E: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: go test . -run '^TestFilesystemOnlyPauseConnect$' -count=1 -v -timeout=35m
