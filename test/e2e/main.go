@@ -50,11 +50,13 @@ func run() int {
 	templateName := env("E2B_E2E_TEMPLATE", e2b.DefaultTemplate)
 	testID := time.Now().UTC().Format("20060102150405")
 	run := &e2eRun{
-		ctx:        ctx,
-		httpClient: &http.Client{Timeout: 60 * time.Second},
-		testID:     testID,
-		template:   templateName,
-		workdir:    "e2b-go-sdk-e2e-" + testID,
+		ctx: ctx,
+		httpClient: &http.Client{Timeout: 60 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}},
+		testID:   testID,
+		template: templateName,
+		workdir:  "e2b-go-sdk-e2e-" + testID,
 	}
 
 	if !runStep("client", func() error {
@@ -788,7 +790,12 @@ func (r *e2eRun) verifySignedFileURLs() error {
 	if err != nil {
 		return err
 	}
-	res, err := r.httpClient.Get(downloadURL)
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Access-Token", r.sandbox.SandboxAccessToken())
+	res, err := r.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -797,10 +804,6 @@ func (r *e2eRun) verifySignedFileURLs() error {
 		return err
 	}
 	if res.StatusCode != http.StatusOK {
-		if res.StatusCode == http.StatusForbidden && strings.Contains(string(body), "X-Access-Token header is required") {
-			fmt.Printf("skip signed file urls: envd %s requires X-Access-Token header for direct file URLs\n", r.sandbox.EnvdVersion())
-			return nil
-		}
 		return fmt.Errorf("download URL status=%d body=%s", res.StatusCode, string(body))
 	}
 	if strings.TrimSpace(string(body)) != "signed-url-ok" {
@@ -824,10 +827,11 @@ func (r *e2eRun) verifySignedFileURLs() error {
 	if err := writer.Close(); err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(r.ctx, http.MethodPost, uploadURL, &payload)
+	req, err = http.NewRequestWithContext(r.ctx, http.MethodPost, uploadURL, &payload)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("X-Access-Token", r.sandbox.SandboxAccessToken())
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	res, err = r.httpClient.Do(req)
 	if err != nil {

@@ -271,3 +271,59 @@ func TestCreateSandboxStartsMCPGatewayInBackground(t *testing.T) {
 		t.Fatalf("gateway token env = %q sandbox token = %q", gatewayToken, sandbox.MCPToken())
 	}
 }
+
+func TestAutoPauseMemory(t *testing.T) {
+	boolPtr := func(v bool) *bool { return &v }
+	for _, tc := range []struct {
+		name, action    string
+		memory          *bool
+		resume, invalid bool
+	}{
+		{"default", "pause", nil, true, false},
+		{"files", "pause", boolPtr(false), false, false},
+		{"full", "pause", boolPtr(true), true, false},
+		{"kill", "kill", boolPtr(false), false, true},
+		{"resume", "pause", boolPtr(false), true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := mustTestClient(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if tc.invalid {
+					t.Fatal("invalid options reached transport")
+				}
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				got, ok := body["autoPauseMemory"]
+				if body["autoPause"] != true || ok != (tc.memory != nil) || (ok && got != *tc.memory) {
+					t.Fatalf("unexpected body %v", body)
+				}
+				return &http.Response{StatusCode: 201, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"sandboxID":"test","envdVersion":"0.6.4"}`))}, nil
+			}))
+			opts := []SandboxCreateOption{WithLifecycle(SandboxLifecycle{OnTimeout: tc.action, AutoResume: tc.resume})}
+			if tc.memory != nil {
+				opts = append(opts, WithAutoPauseMemory(*tc.memory))
+			}
+			_, err := client.CreateSandbox(context.Background(), opts...)
+			if (err != nil) != tc.invalid {
+				t.Fatalf("CreateSandbox error: %v", err)
+			}
+		})
+	}
+}
+
+func TestPauseFilesystemOnlyRequest(t *testing.T) {
+	s := sbcovSandbox(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var body map[string]bool
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if memory, ok := body["memory"]; !ok || memory {
+			t.Fatalf("pause body %v", body)
+		}
+		return jsonResponse(http.StatusNoContent, "", nil), nil
+	}))
+	if ok, err := s.Pause(context.Background(), WithPauseMemory(false)); err != nil || !ok {
+		t.Fatalf("pause = %v, %v", ok, err)
+	}
+}

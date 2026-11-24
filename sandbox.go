@@ -54,6 +54,7 @@ type newSandboxRequest struct {
 	TemplateID          string               `json:"templateID"`
 	AllowInternetAccess bool                 `json:"allow_internet_access"`
 	AutoPause           bool                 `json:"autoPause"`
+	AutoPauseMemory     *bool                `json:"autoPauseMemory,omitempty"`
 	AutoResume          map[string]bool      `json:"autoResume,omitempty"`
 	EnvVars             map[string]string    `json:"envVars"`
 	MCP                 any                  `json:"mcp,omitempty"`
@@ -73,6 +74,7 @@ type sandboxCreateOptions struct {
 	allowInternetAccess bool
 	mcp                 any
 	network             *SandboxNetworkOpts
+	autoPauseMemory     *bool
 	lifecycle           *SandboxLifecycle
 	volumeMounts        []SandboxVolumeMount
 }
@@ -144,6 +146,11 @@ func WithNetwork(network SandboxNetworkOpts) SandboxCreateOption {
 	return func(o *sandboxCreateOptions) { o.network = &network }
 }
 
+// WithAutoPauseMemory controls whether a timeout pause saves memory along with files.
+func WithAutoPauseMemory(memory bool) SandboxCreateOption {
+	return func(o *sandboxCreateOptions) { o.autoPauseMemory = &memory }
+}
+
 // WithLifecycle sets sandbox timeout lifecycle behavior.
 func WithLifecycle(lifecycle SandboxLifecycle) SandboxCreateOption {
 	return func(o *sandboxCreateOptions) { o.lifecycle = &lifecycle }
@@ -197,6 +204,14 @@ func (c *Client) CreateSandbox(ctx context.Context, opts ...SandboxCreateOption)
 		}
 		autoResume = options.lifecycle.AutoResume
 	}
+	if options.autoPauseMemory != nil {
+		if onTimeout != "pause" {
+			return nil, &InvalidArgumentError{Message: "autoPauseMemory requires on_timeout pause"}
+		}
+		if autoResume && !*options.autoPauseMemory {
+			return nil, &InvalidArgumentError{Message: "auto_resume requires autoPauseMemory to be true"}
+		}
+	}
 	if autoResume && onTimeout != "pause" {
 		return nil, &InvalidArgumentError{Message: "auto_resume can only be true when on_timeout is pause"}
 	}
@@ -204,6 +219,7 @@ func (c *Client) CreateSandbox(ctx context.Context, opts ...SandboxCreateOption)
 	body := newSandboxRequest{
 		TemplateID:          options.template,
 		AllowInternetAccess: options.allowInternetAccess,
+		AutoPauseMemory:     options.autoPauseMemory,
 		AutoPause:           onTimeout == "pause",
 		AutoResume:          map[string]bool{"enabled": autoResume},
 		EnvVars:             nonNilStringMap(options.envs),
@@ -383,10 +399,36 @@ func (s *Sandbox) GetMetrics(ctx context.Context, start, end *time.Time) ([]Sand
 	return s.client.GetSandboxMetrics(ctx, s.sandboxID, start, end)
 }
 
+type sandboxPauseOptions struct {
+	memory *bool
+}
+
+// SandboxPauseOption configures one manual pause operation.
+type SandboxPauseOption func(*sandboxPauseOptions)
+
+// WithPauseMemory controls whether a manual pause saves memory in addition to
+// the filesystem. The default is true. With false, processes and their memory
+// are not restored, and MicroSandbox requires an explicit Connect to resume.
+// This option does not change the sandbox's timeout lifecycle or auto-resume policy.
+func WithPauseMemory(memory bool) SandboxPauseOption {
+	return func(o *sandboxPauseOptions) { o.memory = &memory }
+}
+
 // PauseSandbox pauses a sandbox. It returns false when the sandbox is already paused.
-func (c *Client) PauseSandbox(ctx context.Context, sandboxID string) (bool, error) {
+func (c *Client) PauseSandbox(ctx context.Context, sandboxID string, opts ...SandboxPauseOption) (bool, error) {
+	var options sandboxPauseOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
+	}
+	// Preserve the existing empty request body when no memory option is set.
+	var body any
+	if options.memory != nil {
+		body = map[string]bool{"memory": *options.memory}
+	}
 	path := "/sandboxes/" + url.PathEscape(sandboxID) + "/pause"
-	status, _, err := c.do(ctx, http.MethodPost, c.config.apiURL(), path, nil, nil, c.config.Headers, http.StatusOK, http.StatusNoContent, http.StatusAccepted, http.StatusConflict)
+	status, _, err := c.do(ctx, http.MethodPost, c.config.apiURL(), path, nil, body, c.config.Headers, http.StatusOK, http.StatusNoContent, http.StatusAccepted, http.StatusConflict)
 	if err != nil {
 		return false, err
 	}
@@ -394,8 +436,8 @@ func (c *Client) PauseSandbox(ctx context.Context, sandboxID string) (bool, erro
 }
 
 // Pause pauses this sandbox.
-func (s *Sandbox) Pause(ctx context.Context) (bool, error) {
-	return s.client.PauseSandbox(ctx, s.sandboxID)
+func (s *Sandbox) Pause(ctx context.Context, opts ...SandboxPauseOption) (bool, error) {
+	return s.client.PauseSandbox(ctx, s.sandboxID, opts...)
 }
 
 // CreateSandboxSnapshot creates a snapshot from a sandbox.
